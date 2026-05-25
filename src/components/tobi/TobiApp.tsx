@@ -9,6 +9,7 @@ import { TobiLogo } from "./TobiLogo";
 import { OnboardingModal } from "./OnboardingModal";
 import { HistorySidebar } from "./HistorySidebar";
 import { UserMenu } from "./UserMenu";
+import { MemoryDrawer } from "./MemoryDrawer";
 import type { ChatMessage, Place, RedditPost } from "./types";
 import { useAuth } from "@/hooks/useAuth";
 import { getMyProfile, updateMyProfile } from "@/lib/profile.functions";
@@ -48,6 +49,7 @@ export function TobiApp() {
   const [facts, setFacts] = useState<string[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [memoryOpen, setMemoryOpen] = useState(false);
   const [historyKey, setHistoryKey] = useState(0);
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -339,6 +341,7 @@ export function TobiApp() {
             name={profile?.name ?? null}
             email={user?.email ?? null}
             onOpenHistory={() => setHistoryOpen(true)}
+            onOpenMemory={() => setMemoryOpen(true)}
             onNewChat={newChat}
           />
         </div>
@@ -473,6 +476,13 @@ export function TobiApp() {
         onSelect={selectConversation}
         onNew={newChat}
         refreshKey={historyKey}
+      />
+
+      <MemoryDrawer
+        open={memoryOpen}
+        onClose={() => setMemoryOpen(false)}
+        name={profile?.name ?? null}
+        onChange={setFacts}
       />
 
       {needsOnboarding && (
