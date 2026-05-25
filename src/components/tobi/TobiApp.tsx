@@ -24,6 +24,8 @@ export function TobiApp() {
   const [mapView, setMapView] = useState<{ places: Place[]; summary: string } | null>(null);
   const [reader, setReader] = useState<{ post: RedditPost; summary: string } | null>(null);
   const [pendingDocs, setPendingDocs] = useState<{ name: string; kind: "docx" | "xlsx"; text: string; preview: string }[]>([]);
+  const [devLogs, setDevLogs] = useState<DevLog[]>([]);
+  const [devOpen, setDevOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
