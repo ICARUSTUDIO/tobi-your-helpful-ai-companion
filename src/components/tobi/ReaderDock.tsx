@@ -158,8 +158,10 @@ function useTTS() {
   return { speaking, paused, voiceName, intensity, speak, pause, resume, stop };
 }
 
-function chunkText(s: string, max = 140): string[] {
-  const sents = s.replace(/\s+/g, " ").split(/(?<=[.!?])\s+/);
+function chunkText(s: string, max = 1200): string[] {
+  const clean = s.replace(/\s+/g, " ").trim();
+  if (clean.length <= max) return [clean];
+  const sents = clean.split(/(?<=[.!?])\s+/);
   const out: string[] = []; let buf = "";
   for (const x of sents) {
     if ((buf + " " + x).length > max) { if (buf) out.push(buf); buf = x; }
