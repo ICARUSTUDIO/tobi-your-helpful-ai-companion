@@ -227,7 +227,7 @@ export function ReaderDock({ post, summary, onClose }: Props) {
               <span className="text-[10px] text-muted-foreground ml-1 truncate">{tts.paused ? "Paused" : `Reading slowly · ${tts.voiceName}`}</span>
             </>
           )}
-          <a href={post.url} target="_blank" rel="noreferrer" className="ml-auto text-[11px] text-tobi hover:underline">Open on Reddit ↗</a>
+          <a href={post.url} target="_blank" rel="noreferrer" className="ml-auto text-[11px] text-tobi hover:underline">Open original ↗</a>
         </div>
 
         {/* Scrollable content */}
