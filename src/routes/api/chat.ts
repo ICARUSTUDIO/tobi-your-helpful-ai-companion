@@ -493,13 +493,17 @@ async function fetchSocial(args: { url?: string; query?: string; platform?: stri
     const contentStart = md.indexOf("Markdown Content:");
     const content = (contentStart >= 0 ? md.slice(contentStart + 17) : md).trim();
     body = content.slice(0, 8000);
-    // Heuristic: split into chunks as "comments" so the reader has scrollable replies
-    comments = content
-      .split(/\n\n+/)
-      .map((p) => p.trim())
-      .filter((p) => p.length > 60 && !/^!\[/.test(p))
-      .slice(0, 30)
-      .map((p, i) => ({ id: `s${i}`, author: platform === "x" ? "user" : "reply", body: p, score: 0, depth: 0, createdUtc: 0 }));
+    if (looksBlocked(content)) {
+      log.warn("social.jina", "page looks like a login/block wall — skipping comments");
+      comments = [];
+    } else {
+      comments = content
+        .split(/\n\n+/)
+        .map((p) => p.trim())
+        .filter((p) => p.length > 60 && !/^!\[/.test(p) && !looksBlocked(p))
+        .slice(0, 30)
+        .map((p, i) => ({ id: `s${i}`, author: platform === "x" ? "user" : "reply", body: p, score: 0, depth: 0, createdUtc: 0 }));
+    }
   } catch (e: any) {
     log.warn("social.jina", `scrape failed: ${e?.message}`);
     if (!body) body = `Couldn't scrape the page directly. Open it on ${platform}:\n\n${targetUrl}`;
