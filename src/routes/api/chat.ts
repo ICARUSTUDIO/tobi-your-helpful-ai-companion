@@ -92,10 +92,111 @@ function makeLogger() {
 }
 
 // ---- Reddit ----
-// Strategy: Worker IPs are blocked by reddit.com directly (403), and Firecrawl refuses
-// to scrape reddit.com. So we:
-//   - SEARCH via Firecrawl /v2/search with `site:reddit.com ...` (Google-backed, works fine).
-//   - SCRAPE a specific thread via r.jina.ai/<url> which returns the page as clean markdown.
+// Strategy: don't depend on Reddit's API. We discover accurate reddit.com thread URLs
+// through search indexes, then use the PullPush archive for post/comment payloads.
+// If archive content is missing, we still return real links/snippets instead of pretending.
+
+type RedditSearchHit = {
+  id: string;
+  url: string;
+  title: string;
+  subreddit?: string;
+  description?: string;
+  selftext?: string;
+  author?: string;
+  score?: number;
+  numComments?: number;
+  createdUtc?: number;
+};
+
+function redditIdFromUrl(url: string) {
+  return url.match(/reddit\.com\/r\/[^/]+\/comments\/([a-z0-9]+)/i)?.[1] || "";
+}
+
+function redditUrlFromParts(permalink: string | undefined, subreddit: string | undefined, id: string, title = "thread") {
+  if (permalink?.startsWith("/r/")) return `https://www.reddit.com${permalink.replace(/\/?$/, "/")}`;
+  const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 80) || "comments";
+  return `https://www.reddit.com/r/${subreddit || "all"}/comments/${id}/${slug}/`;
+}
+
+function cleanRedditText(value: unknown) {
+  const text = String(value || "").replace(/&amp;/g, "&").trim();
+  if (!text || /^\[(deleted|removed)\]$/i.test(text)) return "";
+  return text;
+}
+
+function queryTokens(query: string) {
+  const stop = new Set(["the", "and", "for", "with", "that", "this", "from", "what", "which", "reddit", "under", "best"]);
+  return query.toLowerCase().match(/[a-z0-9]+/g)?.filter((t) => t.length > 2 && !stop.has(t)) ?? [];
+}
+
+function scoreRedditHit(hit: RedditSearchHit, query: string) {
+  const haystack = `${hit.title} ${hit.description || ""} ${hit.selftext || ""} ${hit.subreddit || ""}`.toLowerCase();
+  const tokens = queryTokens(query);
+  const overlap = tokens.reduce((n, token) => n + (haystack.includes(token) ? 1 : 0), 0);
+  const phraseBoost = haystack.includes(query.toLowerCase().replace(/\s+/g, " ").slice(0, 42)) ? 35 : 0;
+  return overlap * 12 + phraseBoost + Math.min(hit.numComments || 0, 80) * 0.45 + Math.min(hit.score || 0, 250) * 0.08;
+}
+
+async function pullpushGet(path: "submission" | "comment", params: Record<string, string | number | undefined>, log: ReturnType<typeof makeLogger>) {
+  const qs = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== "") qs.set(key, String(value));
+  });
+  const url = `https://api.pullpush.io/reddit/search/${path}/?${qs}`;
+  log.info("reddit.archive", `GET ${url.replace(/&?size=\d+/, "")}`);
+  const res = await fetch(url, { headers: { "User-Agent": "Tobi/1.0 (+search archive)" } });
+  log.info("reddit.archive", `← ${res.status}`);
+  if (!res.ok) throw new Error(`pullpush ${path} ${res.status}: ${(await res.text()).slice(0, 180)}`);
+  const body = await res.json() as { data?: any[] };
+  return Array.isArray(body.data) ? body.data : [];
+}
+
+function mapSubmission(raw: any): RedditSearchHit | null {
+  const id = String(raw?.id || "");
+  const title = cleanRedditText(raw?.title);
+  if (!id || !title) return null;
+  const subreddit = cleanRedditText(raw?.subreddit);
+  const selftext = cleanRedditText(raw?.selftext);
+  return {
+    id,
+    url: redditUrlFromParts(raw?.permalink, subreddit, id, title),
+    title,
+    subreddit,
+    description: selftext.slice(0, 280),
+    selftext,
+    author: cleanRedditText(raw?.author) || "unknown",
+    score: Number(raw?.score || 0),
+    numComments: Number(raw?.num_comments || raw?.numComments || 0),
+    createdUtc: Number(raw?.created_utc || 0),
+  };
+}
+
+async function pullpushSearchReddit(query: string, subreddit: string | undefined, log: ReturnType<typeof makeLogger>) {
+  const raw = await pullpushGet("submission", { q: query, subreddit, size: 30 }, log);
+  const hits = raw.map(mapSubmission).filter(Boolean) as RedditSearchHit[];
+  log.info("reddit.archive", `→ ${hits.length} archived submission matches`);
+  return hits;
+}
+
+async function pullpushSubmissionById(id: string, log: ReturnType<typeof makeLogger>) {
+  const raw = await pullpushGet("submission", { ids: id, size: 1 }, log);
+  return raw.map(mapSubmission).filter(Boolean)[0] as RedditSearchHit | undefined;
+}
+
+async function pullpushCommentsByLinkId(id: string, log: ReturnType<typeof makeLogger>) {
+  const raw = await pullpushGet("comment", { link_id: id, size: 50, sort_type: "score", sort: "desc" }, log);
+  const comments = raw.map((c, i) => ({
+    id: String(c?.id || `c${i}`),
+    author: cleanRedditText(c?.author) || "redditor",
+    body: cleanRedditText(c?.body),
+    score: Number(c?.score || 0),
+    depth: String(c?.parent_id || "").startsWith("t1_") ? 1 : 0,
+    createdUtc: Number(c?.created_utc || 0),
+  })).filter((c) => c.body.length > 20);
+  log.info("reddit.archive", `→ ${comments.length} archived comments`);
+  return comments;
+}
 
 async function jinaMarkdown(targetUrl: string, log: ReturnType<typeof makeLogger>): Promise<string> {
   const url = `https://r.jina.ai/${targetUrl}`;
@@ -137,10 +238,12 @@ async function firecrawlSearchReddit(query: string, subreddit: string | undefine
   const filtered = results
     .filter((r) => typeof r?.url === "string" && /reddit\.com\/r\/[^/]+\/comments\//.test(r.url))
     .map((r) => ({
+      id: redditIdFromUrl(r.url),
       url: r.url as string,
       title: (r.title || "") as string,
       description: (r.description || r.snippet || "") as string,
-    }));
+    }))
+    .filter((r) => r.id);
   log.info("reddit.search", `→ ${filtered.length} reddit thread results`);
   return filtered;
 }
@@ -156,62 +259,78 @@ function extractRedditMeta(markdown: string, url: string) {
 }
 
 async function fetchReddit(args: { url?: string; query?: string; subreddit?: string }, log: ReturnType<typeof makeLogger>) {
-  let postUrl: string;
-  let searchSnippets: { url: string; title: string; description: string }[] = [];
+  let chosen: RedditSearchHit | undefined;
+  let postUrl = "";
+  let archiveHits: RedditSearchHit[] = [];
+  let searchSnippets: RedditSearchHit[] = [];
+  const q = (args.query || "").trim();
 
   if (args.url) {
     const u = new URL(args.url.startsWith("http") ? args.url : `https://${args.url}`);
     postUrl = `https://www.reddit.com${u.pathname.replace(/\/?$/, "")}/`;
+    const id = redditIdFromUrl(postUrl);
+    if (id) chosen = await pullpushSubmissionById(id, log).catch((e) => { log.warn("reddit.archive", `post lookup failed: ${e?.message}`); return undefined; });
+    chosen = chosen || { id: id || postUrl, url: postUrl, title: "Reddit thread", subreddit: u.pathname.match(/\/r\/([^/]+)/i)?.[1] };
   } else {
-    const q = (args.query || "").trim();
     if (!q) throw new Error("Need a url or query");
-    searchSnippets = await firecrawlSearchReddit(q, args.subreddit, log);
-    if (searchSnippets.length === 0) throw new Error("No matching reddit threads found via search");
-    postUrl = searchSnippets[0].url;
-    log.info("reddit.search", `top → ${searchSnippets[0].title.slice(0, 60)}…`);
+    archiveHits = await pullpushSearchReddit(q, args.subreddit, log).catch((e) => { log.warn("reddit.archive", `search failed: ${e?.message}`); return []; });
+    searchSnippets = await firecrawlSearchReddit(q, args.subreddit, log).catch((e) => { log.warn("reddit.search", `firecrawl search failed: ${e?.message}`); return []; });
+
+    const byId = new Map<string, RedditSearchHit>();
+    [...archiveHits, ...searchSnippets].forEach((hit) => {
+      if (!hit.id) return;
+      const prev = byId.get(hit.id);
+      byId.set(hit.id, { ...hit, ...prev, title: prev?.title || hit.title, description: prev?.description || hit.description, url: prev?.url || hit.url });
+    });
+    const ranked = [...byId.values()].sort((a, b) => scoreRedditHit(b, q) - scoreRedditHit(a, q));
+    chosen = ranked[0];
+    if (!chosen && searchSnippets.length > 0) chosen = searchSnippets[0];
+    if (!chosen) throw new Error("No matching Reddit threads found in search indexes");
+    if (!chosen.selftext && chosen.id) {
+      chosen = await pullpushSubmissionById(chosen.id, log).catch(() => undefined) || chosen;
+    }
+    postUrl = chosen.url;
+    log.info("reddit.search", `top → ${chosen.title.slice(0, 60)}…`);
   }
 
-  let markdown = "";
-  try {
-    markdown = await jinaMarkdown(postUrl, log);
-  } catch (e: any) {
-    log.warn("reddit.jina", `failed: ${e?.message}`);
-    if (searchSnippets.length > 0) {
-      const synth = searchSnippets
-        .slice(0, 6)
-        .map((s, i) => `### ${i + 1}. ${s.title}\n${s.url}\n\n${s.description}`)
-        .join("\n\n---\n\n");
-      markdown = `Title: Reddit search results for "${args.query}"\nMarkdown Content:\n${synth}`;
-    } else {
-      throw e;
+  let body = cleanRedditText(chosen?.selftext) || cleanRedditText(chosen?.description);
+  let comments = chosen?.id ? await pullpushCommentsByLinkId(chosen.id, log).catch((e) => { log.warn("reddit.archive", `comments failed: ${e?.message}`); return []; }) : [];
+
+  if ((!body || comments.length === 0) && postUrl) {
+    try {
+      const markdown = await jinaMarkdown(postUrl, log);
+      const meta = extractRedditMeta(markdown, postUrl);
+      body = body || meta.content.slice(0, 8000);
+      if (comments.length === 0) {
+        comments = meta.content.split(/\n\n+/).map((p) => p.trim()).filter((p) => p.length > 60).slice(0, 30).map((p, i) => ({
+          id: `j${i}`, author: "redditor", body: p, score: 0, depth: 0, createdUtc: 0,
+        }));
+      }
+    } catch (e: any) {
+      log.warn("reddit.jina", `fallback failed: ${e?.message}`);
     }
   }
 
-  const meta = extractRedditMeta(markdown, postUrl);
-  const body = meta.content.slice(0, 8000);
+  const related = [...archiveHits, ...searchSnippets]
+    .filter((hit) => hit.url)
+    .sort((a, b) => scoreRedditHit(b, q || chosen?.title || "") - scoreRedditHit(a, q || chosen?.title || ""))
+    .filter((hit, i, arr) => arr.findIndex((x) => x.url === hit.url) === i)
+    .slice(0, 8)
+    .map((hit) => ({ title: hit.title, url: hit.url, subreddit: hit.subreddit, score: hit.score, numComments: hit.numComments }));
 
-  const paragraphs = body.split(/\n\n+/).map((p) => p.trim()).filter((p) => p.length > 40);
-  const comments = paragraphs.slice(0, 30).map((p, i) => ({
-    id: `c${i}`,
-    author: "redditor",
-    body: p,
-    score: 0,
-    depth: 0,
-    createdUtc: 0,
-  }));
-
-  log.info("reddit.parse", `post="${meta.title.slice(0, 60)}…" chunks=${comments.length}`);
+  log.info("reddit.parse", `post="${(chosen?.title || "Reddit thread").slice(0, 60)}…" comments=${comments.length} related=${related.length}`);
 
   return {
-    id: postUrl,
+    id: chosen?.id || postUrl,
     source: "reddit" as const,
-    subreddit: meta.subreddit,
-    title: meta.title,
-    author: "unknown",
-    body,
+    subreddit: chosen?.subreddit || postUrl.match(/reddit\.com\/r\/([^/]+)\//i)?.[1] || "",
+    title: chosen?.title || "Reddit thread",
+    author: chosen?.author || "unknown",
+    body: body || (related.length ? related.map((r, i) => `### ${i + 1}. ${r.title}\n${r.url}`).join("\n\n") : "No archived body text was available for this thread."),
     url: postUrl,
-    score: 0,
+    score: chosen?.score || 0,
     numComments: comments.length,
+    related,
     comments,
   };
 }

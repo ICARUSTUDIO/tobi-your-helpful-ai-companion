@@ -1,5 +1,6 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { TobiLogo } from "./TobiLogo";
 import type { ChatMessage } from "./types";
 
 export function Message({ m, onShowMap, onShowReader }: { m: ChatMessage; onShowMap?: () => void; onShowReader?: () => void }) {
@@ -24,7 +25,7 @@ export function Message({ m, onShowMap, onShowReader }: { m: ChatMessage; onShow
 
   return (
     <div className="flex gap-3">
-      <div className="size-8 shrink-0 rounded-full tobi-orb grid place-items-center text-[10px] font-bold text-background">T</div>
+      <TobiLogo className="size-8 shrink-0 rounded-full" markClassName="size-6" />
       <div className="flex-1 min-w-0">
         {m.mode === "research" && (
           <div className="mb-2 inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-tobi font-semibold">
