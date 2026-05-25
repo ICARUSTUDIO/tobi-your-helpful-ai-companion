@@ -51,6 +51,15 @@ export function Message({ m, onShowMap, onShowReader }: { m: ChatMessage; onShow
             View {m.places.length} {m.places.length === 1 ? "place" : "places"} on map →
           </button>
         )}
+        {m.post && (
+          <button
+            onClick={onShowReader}
+            className="mt-3 inline-flex items-center gap-2 rounded-xl bg-card border border-tobi/40 px-3 py-2 text-xs font-medium text-tobi hover:bg-tobi/10 transition glow-ring"
+          >
+            <span className="size-1.5 rounded-full bg-tobi animate-pulse" />
+            Open reader: "{m.post.title.slice(0, 50)}{m.post.title.length > 50 ? "…" : ""}" →
+          </button>
+        )}
       </div>
     </div>
   );
