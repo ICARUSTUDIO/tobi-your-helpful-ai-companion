@@ -553,10 +553,17 @@ export const Route = createFileRoute("/api/chat")({
           if (!parsed.success) {
             return new Response(JSON.stringify({ error: "Invalid input", logs: log.entries }), { status: 400, headers: { "Content-Type": "application/json" } });
           }
-          const { messages, mode } = parsed.data;
-          log.info("chat", `mode=${mode} messages=${messages.length}`);
+          const { messages, mode, user } = parsed.data;
+          log.info("chat", `mode=${mode} messages=${messages.length} user=${user?.name ?? "anon"}`);
 
-          const sys = SYSTEM_PROMPT + (mode === "research" ? RESEARCH_PROMPT : "");
+          let personal = "";
+          if (user?.name || user?.age || user?.facts?.length) {
+            personal = `\n\nABOUT THIS USER (use naturally, never recite as a list):\n` +
+              (user.name ? `- Name: ${user.name}\n` : "") +
+              (user.age ? `- Age: ${user.age}\n` : "") +
+              (user.facts?.length ? `- Things they've told you before:\n${user.facts.map((f) => `  • ${f}`).join("\n")}\n` : "");
+          }
+          const sys = SYSTEM_PROMPT + personal + (mode === "research" ? RESEARCH_PROMPT : "");
           const convo: any[] = [{ role: "system", content: sys }, ...messages];
 
           let collectedPlaces: any[] | null = null;
