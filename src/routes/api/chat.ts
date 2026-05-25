@@ -665,6 +665,21 @@ export const Route = createFileRoute("/api/chat")({
                     log.error("tool.error", `fetch_social: ${e?.message}`);
                     convo.push({ role: "tool", tool_call_id: tc.id, name, content: JSON.stringify({ error: e?.message || "tool failed", hint: "Tell the user honestly that the platform couldn't be reached." }) });
                   }
+                } else if (name === "create_file") {
+                  const filename = String(args.filename || "file.txt").replace(/[\\/]/g, "_").slice(0, 120);
+                  const mime = String(args.mime_type || "text/plain").slice(0, 120);
+                  const encoding = args.encoding === "base64" ? "base64" : "utf8";
+                  const content = String(args.content ?? "");
+                  if (!content) {
+                    convo.push({ role: "tool", tool_call_id: tc.id, name, content: JSON.stringify({ error: "Empty content; nothing to save." }) });
+                  } else if (content.length > 2_000_000) {
+                    convo.push({ role: "tool", tool_call_id: tc.id, name, content: JSON.stringify({ error: "File too large (>2MB)." }) });
+                  } else {
+                    collectedFiles.push({ name: filename, mime, content, encoding });
+                    toolUsed = toolUsed || "create_file";
+                    log.info("tool.call", `create_file → ${filename} (${mime}, ${content.length} chars)`);
+                    convo.push({ role: "tool", tool_call_id: tc.id, name, content: JSON.stringify({ ok: true, filename, mime_type: mime, bytes: content.length }) });
+                  }
                 }
               }
               continue;
@@ -674,12 +689,13 @@ export const Route = createFileRoute("/api/chat")({
               text: msg.content ?? "",
               places: collectedPlaces,
               post: collectedPost,
+              files: collectedFiles.length ? collectedFiles : null,
               tool: toolUsed,
               logs: log.entries,
             }), { headers: { "Content-Type": "application/json" } });
           }
 
-          return new Response(JSON.stringify({ text: "I had trouble finishing that thought — try again?", places: collectedPlaces, post: collectedPost, tool: toolUsed, logs: log.entries }), { headers: { "Content-Type": "application/json" } });
+          return new Response(JSON.stringify({ text: "I had trouble finishing that thought — try again?", places: collectedPlaces, post: collectedPost, files: collectedFiles.length ? collectedFiles : null, tool: toolUsed, logs: log.entries }), { headers: { "Content-Type": "application/json" } });
         } catch (e: any) {
           if (e instanceof Response) {
             // attach logs to the body
