@@ -24,7 +24,7 @@ export interface RedditComment {
 
 export interface RedditPost {
   id: string;
-  source: "reddit" | "quora" | "web";
+  source: "reddit" | "x" | "instagram" | "facebook" | "tiktok" | "youtube" | "threads" | "linkedin" | "quora" | "hackernews" | "web";
   subreddit?: string;
   title: string;
   author: string;
