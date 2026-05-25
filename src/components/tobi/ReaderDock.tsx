@@ -88,9 +88,13 @@ export function ReaderDock({ post, summary, onClose }: Props) {
   function startListening() {
     setShowTutorial(false);
     localStorage.setItem("tobi-listen-tutorial", "1");
-    const postText = `${post.title}. Posted by ${post.author}. ${post.body || "No body, this is a link post."}`;
-    tts.speak(chunkText(postText), () => {
-      setAskComments(true);
+    const take = (summary || "").trim();
+    if (!take) {
+      addNote("_I don't have a take written yet for this one — nothing to read aloud._");
+      return;
+    }
+    tts.speak(chunkText(`Tobi's take. ${take}`), () => {
+      if (post.comments.length > 0) setAskComments(true);
     });
   }
 
@@ -181,9 +185,9 @@ export function ReaderDock({ post, summary, onClose }: Props) {
               <div className="font-display text-lg font-semibold">Meet the Listen button</div>
             </div>
             <p className="mt-4 text-sm text-foreground/85 leading-relaxed">
-              Hit <b>Listen</b> and I'll read this post out loud so you can keep working in chat. When I finish the post,
-              I'll ask if you want the comments next. You can minimize this panel — I'll keep reading and ping you
-              from the top-right when it's time for more.
+              Hit <b>Listen</b> and I'll read you <b>my take</b> on this thread — not the raw post, just the summary I wrote.
+              When I'm done, I'll offer to read the top comments too. You can minimize this panel and keep chatting;
+              I'll ping you from the top-right when I need an answer.
             </p>
             <div className="mt-5 flex justify-end gap-2">
               <button onClick={() => setShowTutorial(false)} className="rounded-full border border-border px-4 py-1.5 text-xs hover:bg-muted">Maybe later</button>
@@ -199,8 +203,8 @@ export function ReaderDock({ post, summary, onClose }: Props) {
           <div className="flex items-center gap-2 min-w-0">
             <span className={`size-2 rounded-full ${tts.speaking ? "bg-tobi animate-pulse" : "bg-tobi/50"}`} />
             <div className="min-w-0">
-              <div className="text-[10px] uppercase tracking-wider text-tobi font-semibold">Thinking cap · r/{post.subreddit}</div>
-              <div className="text-xs text-muted-foreground truncate">by u/{post.author} · {post.numComments ?? totalComments} comments</div>
+              <div className="text-[10px] uppercase tracking-wider text-tobi font-semibold">Thinking cap · {post.source === "reddit" ? `r/${post.subreddit}` : post.source}</div>
+              <div className="text-xs text-muted-foreground truncate">{post.source === "reddit" ? `by u/${post.author}` : post.subreddit || post.author} · {post.numComments ?? totalComments} replies</div>
             </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
@@ -223,7 +227,7 @@ export function ReaderDock({ post, summary, onClose }: Props) {
               <span className="text-[10px] text-muted-foreground ml-1 truncate">{tts.paused ? "Paused" : `Reading slowly · ${tts.voiceName}`}</span>
             </>
           )}
-          <a href={post.url} target="_blank" rel="noreferrer" className="ml-auto text-[11px] text-tobi hover:underline">Open on Reddit ↗</a>
+          <a href={post.url} target="_blank" rel="noreferrer" className="ml-auto text-[11px] text-tobi hover:underline">Open original ↗</a>
         </div>
 
         {/* Scrollable content */}
@@ -248,12 +252,12 @@ export function ReaderDock({ post, summary, onClose }: Props) {
 
           {post.related && post.related.length > 1 && (
             <div className="border-t border-border pt-3">
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Matched Reddit links</div>
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Related links</div>
               <div className="space-y-2">
                 {post.related.slice(0, 6).map((hit) => (
                   <a key={hit.url} href={hit.url} target="_blank" rel="noreferrer" className="block rounded-xl border border-border bg-background/40 p-3 hover:border-tobi/40 transition">
                     <div className="text-xs font-medium text-foreground leading-snug">{hit.title}</div>
-                    <div className="mt-1 text-[10px] text-muted-foreground">r/{hit.subreddit || "reddit"} · {hit.numComments ?? 0} comments · {hit.score ?? 0} pts</div>
+                    <div className="mt-1 text-[10px] text-muted-foreground truncate">{(() => { try { return new URL(hit.url).hostname.replace(/^www\./, ""); } catch { return hit.url; } })()}</div>
                   </a>
                 ))}
               </div>
