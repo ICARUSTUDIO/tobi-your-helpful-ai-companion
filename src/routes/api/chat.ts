@@ -17,6 +17,8 @@ const BodySchema = z.object({
     age: z.number().int().min(5).max(120).nullish(),
     birthday: z.string().nullish(),
     isBirthday: z.boolean().optional(),
+    email: z.string().max(200).nullish(),
+    isCreator: z.boolean().optional(),
     facts: z.array(z.string().max(200)).max(20).optional(),
   }).optional(),
 });
