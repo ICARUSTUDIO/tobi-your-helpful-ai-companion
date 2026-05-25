@@ -92,154 +92,127 @@ function makeLogger() {
 }
 
 // ---- Reddit ----
-// reddit.com blocks/limits Cloudflare Worker UAs aggressively. We try multiple hosts
-// with rotating UAs and fall back to the search-result preview if the post JSON fails.
-const REDDIT_HOSTS = ["www.reddit.com", "old.reddit.com", "api.reddit.com"];
-const UAS = [
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-  "TobiAI/1.0 (research assistant; +https://lovable.dev)",
-];
+// Strategy: Worker IPs are blocked by reddit.com directly (403), and Firecrawl refuses
+// to scrape reddit.com. So we:
+//   - SEARCH via Firecrawl /v2/search with `site:reddit.com ...` (Google-backed, works fine).
+//   - SCRAPE a specific thread via r.jina.ai/<url> which returns the page as clean markdown.
 
-async function redditFetch(path: string, log: ReturnType<typeof makeLogger>): Promise<any> {
-  let lastErr = "";
-  // 1) direct attempts to reddit hosts
-  for (const host of REDDIT_HOSTS) {
-    for (const ua of UAS) {
-      const url = `https://${host}${path}`;
-      try {
-        log.info("reddit.fetch", `GET ${url}`, { ua: ua.slice(0, 30) });
-        const res = await fetch(url, {
-          headers: { "User-Agent": ua, Accept: "application/json, */*" },
-          // @ts-ignore – cf workers honor this
-          cf: { cacheTtl: 0 },
-        });
-        const ct = res.headers.get("content-type") || "";
-        log.info("reddit.fetch", `← ${res.status} ${ct}`);
-        if (!res.ok) { lastErr = `${host} → ${res.status}`; continue; }
-        const text = await res.text();
-        if (!text.trim().startsWith("{") && !text.trim().startsWith("[")) {
-          lastErr = `${host} → non-JSON (${text.slice(0, 80)}…)`;
-          log.warn("reddit.fetch", lastErr);
-          continue;
-        }
-        return JSON.parse(text);
-      } catch (e: any) {
-        lastErr = `${host} → ${e?.message || e}`;
-        log.warn("reddit.fetch", lastErr);
-      }
-    }
-  }
-  // 2) fallback: r.jina.ai reader proxy — free, no key. Often rate-limited too.
-  for (const host of REDDIT_HOSTS) {
-    const url = `https://r.jina.ai/https://${host}${path}`;
-    try {
-      log.info("reddit.fetch", `jina GET ${url}`);
-      const res = await fetch(url, {
-        headers: { "User-Agent": UAS[0], Accept: "application/json, text/plain, */*", "X-Return-Format": "text" },
-      });
-      log.info("reddit.fetch", `← jina ${res.status}`);
-      if (!res.ok) { lastErr = `jina(${host}) → ${res.status}`; continue; }
-      const text = await res.text();
-      const start = Math.min(...["{", "["].map((c) => { const i = text.indexOf(c); return i < 0 ? Infinity : i; }));
-      if (!Number.isFinite(start)) { lastErr = `jina(${host}) → no JSON in body`; continue; }
-      try { return JSON.parse(text.slice(start)); }
-      catch (e: any) { lastErr = `jina(${host}) → parse fail (${e?.message})`; log.warn("reddit.fetch", lastErr); }
-    } catch (e: any) {
-      lastErr = `jina(${host}) → ${e?.message || e}`;
-      log.warn("reddit.fetch", lastErr);
-    }
-  }
+async function jinaMarkdown(targetUrl: string, log: ReturnType<typeof makeLogger>): Promise<string> {
+  const url = `https://r.jina.ai/${targetUrl}`;
+  log.info("reddit.jina", `GET ${url}`);
+  const res = await fetch(url, {
+    headers: {
+      Accept: "text/plain, */*",
+      "X-Return-Format": "markdown",
+      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Safari/605.1.15",
+    },
+  });
+  log.info("reddit.jina", `← ${res.status}`);
+  if (!res.ok) throw new Error(`jina ${res.status} for ${targetUrl}`);
+  const text = await res.text();
+  if (!text || text.length < 50) throw new Error(`jina returned empty body for ${targetUrl}`);
+  return text;
+}
 
-  // 3) final fallback: Firecrawl — paid, very reliable. Scrapes the .json endpoint
-  //    as rawHtml (which for a JSON URL is just the JSON text).
+async function firecrawlSearchReddit(query: string, subreddit: string | undefined, log: ReturnType<typeof makeLogger>) {
   const FIRECRAWL_API_KEY = process.env.FIRECRAWL_API_KEY;
-  if (FIRECRAWL_API_KEY) {
-    for (const host of REDDIT_HOSTS) {
-      const target = `https://${host}${path}`;
-      try {
-        log.info("reddit.fetch", `firecrawl scrape ${target}`);
-        const res = await fetch("https://api.firecrawl.dev/v2/scrape", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ url: target, formats: ["rawHtml"], onlyMainContent: false }),
-        });
-        log.info("reddit.fetch", `← firecrawl ${res.status}`);
-        if (!res.ok) { lastErr = `firecrawl(${host}) → ${res.status} ${(await res.text()).slice(0,120)}`; continue; }
-        const body = await res.json() as any;
-        const raw: string = body?.data?.rawHtml || body?.data?.html || body?.data?.markdown || "";
-        if (!raw) { lastErr = `firecrawl(${host}) → empty body`; continue; }
-        // strip any HTML wrapper firecrawl might add around plain JSON
-        const stripped = raw.replace(/<[^>]+>/g, "").trim();
-        const start = Math.min(...["{", "["].map((c) => { const i = stripped.indexOf(c); return i < 0 ? Infinity : i; }));
-        if (!Number.isFinite(start)) { lastErr = `firecrawl(${host}) → no JSON in body`; continue; }
-        try { return JSON.parse(stripped.slice(start)); }
-        catch (e: any) { lastErr = `firecrawl(${host}) → parse fail (${e?.message})`; log.warn("reddit.fetch", lastErr); }
-      } catch (e: any) {
-        lastErr = `firecrawl(${host}) → ${e?.message || e}`;
-        log.warn("reddit.fetch", lastErr);
-      }
-    }
-  } else {
-    log.warn("reddit.fetch", "FIRECRAWL_API_KEY not set — skipping firecrawl fallback");
+  if (!FIRECRAWL_API_KEY) throw new Error("FIRECRAWL_API_KEY not set — cannot search Reddit");
+  const scoped = subreddit
+    ? `site:reddit.com/r/${subreddit} ${query}`
+    : `site:reddit.com ${query}`;
+  log.info("reddit.search", `firecrawl search: ${scoped}`);
+  const res = await fetch("https://api.firecrawl.dev/v2/search", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ query: scoped, limit: 8 }),
+  });
+  log.info("reddit.search", `← firecrawl ${res.status}`);
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(`firecrawl search ${res.status}: ${t.slice(0, 200)}`);
   }
+  const body = await res.json() as any;
+  const results: any[] =
+    body?.data?.web ?? body?.data?.results ?? (Array.isArray(body?.data) ? body.data : []) ?? [];
+  const filtered = results
+    .filter((r) => typeof r?.url === "string" && /reddit\.com\/r\/[^/]+\/comments\//.test(r.url))
+    .map((r) => ({
+      url: r.url as string,
+      title: (r.title || "") as string,
+      description: (r.description || r.snippet || "") as string,
+    }));
+  log.info("reddit.search", `→ ${filtered.length} reddit thread results`);
+  return filtered;
+}
 
-  throw new Error(`All Reddit routes failed: ${lastErr}`);
+function extractRedditMeta(markdown: string, url: string) {
+  const titleMatch = markdown.match(/^Title:\s*(.+)$/m);
+  const title = (titleMatch?.[1] || "").replace(/\s*:\s*r\/\w+\s*$/i, "").trim();
+  const subMatch = url.match(/reddit\.com\/r\/([^/]+)\//i);
+  const subreddit = subMatch?.[1] || "";
+  const contentStart = markdown.indexOf("Markdown Content:");
+  const content = contentStart >= 0 ? markdown.slice(contentStart + "Markdown Content:".length).trim() : markdown;
+  return { title: title || "Reddit thread", subreddit, content };
 }
 
 async function fetchReddit(args: { url?: string; query?: string; subreddit?: string }, log: ReturnType<typeof makeLogger>) {
-  let permalinkPath: string | null = null;
+  let postUrl: string;
+  let searchSnippets: { url: string; title: string; description: string }[] = [];
 
   if (args.url) {
     const u = new URL(args.url.startsWith("http") ? args.url : `https://${args.url}`);
-    permalinkPath = u.pathname.replace(/\/?$/, "");
+    postUrl = `https://www.reddit.com${u.pathname.replace(/\/?$/, "")}/`;
   } else {
     const q = (args.query || "").trim();
     if (!q) throw new Error("Need a url or query");
-    const sub = args.subreddit ? `r/${args.subreddit}/` : "";
-    const searchPath = `/${sub}search.json?q=${encodeURIComponent(q)}&restrict_sr=${args.subreddit ? "on" : "off"}&sort=relevance&limit=5&raw_json=1`;
-    log.info("reddit.search", `query="${q}" sub="${args.subreddit ?? ""}"`);
-    const sdata = await redditFetch(searchPath, log);
-    const first = sdata?.data?.children?.[0]?.data;
-    if (!first) throw new Error("No matching reddit posts found");
-    permalinkPath = first.permalink.replace(/\/?$/, "");
-    log.info("reddit.search", `top → ${first.title?.slice(0, 60)}…`);
+    searchSnippets = await firecrawlSearchReddit(q, args.subreddit, log);
+    if (searchSnippets.length === 0) throw new Error("No matching reddit threads found via search");
+    postUrl = searchSnippets[0].url;
+    log.info("reddit.search", `top → ${searchSnippets[0].title.slice(0, 60)}…`);
   }
 
-  const jsonPath = `${permalinkPath}.json?limit=200&depth=4&raw_json=1`;
-  const data = await redditFetch(jsonPath, log);
-  const arr = Array.isArray(data) ? data : [];
-  const post = arr?.[0]?.data?.children?.[0]?.data;
-  if (!post) throw new Error("Could not parse reddit post payload");
-
-  const flat: any[] = [];
-  function walk(node: any, depth: number) {
-    if (!node || node.kind !== "t1") return;
-    const d = node.data;
-    if (!d || d.body === "[deleted]" || d.body === "[removed]") return;
-    flat.push({
-      id: d.id, author: d.author || "unknown", body: d.body || "",
-      score: d.score ?? 0, depth, createdUtc: d.created_utc,
-    });
-    const replies = d.replies?.data?.children;
-    if (Array.isArray(replies)) replies.forEach((r) => walk(r, depth + 1));
+  let markdown = "";
+  try {
+    markdown = await jinaMarkdown(postUrl, log);
+  } catch (e: any) {
+    log.warn("reddit.jina", `failed: ${e?.message}`);
+    if (searchSnippets.length > 0) {
+      const synth = searchSnippets
+        .slice(0, 6)
+        .map((s, i) => `### ${i + 1}. ${s.title}\n${s.url}\n\n${s.description}`)
+        .join("\n\n---\n\n");
+      markdown = `Title: Reddit search results for "${args.query}"\nMarkdown Content:\n${synth}`;
+    } else {
+      throw e;
+    }
   }
-  const top = arr?.[1]?.data?.children ?? [];
-  top.forEach((c: any) => walk(c, 0));
 
-  log.info("reddit.parse", `post="${post.title?.slice(0,60)}…" comments=${flat.length}`);
+  const meta = extractRedditMeta(markdown, postUrl);
+  const body = meta.content.slice(0, 8000);
+
+  const paragraphs = body.split(/\n\n+/).map((p) => p.trim()).filter((p) => p.length > 40);
+  const comments = paragraphs.slice(0, 30).map((p, i) => ({
+    id: `c${i}`,
+    author: "redditor",
+    body: p,
+    score: 0,
+    depth: 0,
+    createdUtc: 0,
+  }));
+
+  log.info("reddit.parse", `post="${meta.title.slice(0, 60)}…" chunks=${comments.length}`);
 
   return {
-    id: post.id,
+    id: postUrl,
     source: "reddit" as const,
-    subreddit: post.subreddit,
-    title: post.title,
-    author: post.author,
-    body: post.selftext || "",
-    url: `https://www.reddit.com${post.permalink}`,
-    score: post.score,
-    numComments: post.num_comments,
-    comments: flat.slice(0, 100),
+    subreddit: meta.subreddit,
+    title: meta.title,
+    author: "unknown",
+    body,
+    url: postUrl,
+    score: 0,
+    numComments: comments.length,
+    comments,
   };
 }
 
