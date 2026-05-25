@@ -49,6 +49,21 @@ export const extractAndSaveFacts = createServerFn({ method: "POST" })
       if (fresh.length === 0) return { facts: [] };
 
       await supabase.from("user_facts").insert(fresh.map((fact) => ({ user_id: userId, fact })));
+
+      // Memory cap: keep only the 100 most recent facts per user (FIFO eviction)
+      const MAX_FACTS_PER_USER = 100;
+      const { data: all } = await supabase
+        .from("user_facts")
+        .select("id")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false });
+      if (all && all.length > MAX_FACTS_PER_USER) {
+        const toDelete = all.slice(MAX_FACTS_PER_USER).map((r: any) => r.id);
+        if (toDelete.length > 0) {
+          await supabase.from("user_facts").delete().in("id", toDelete);
+        }
+      }
+
       return { facts: fresh };
     } catch {
       return { facts: [] };
