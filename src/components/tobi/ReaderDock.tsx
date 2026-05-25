@@ -185,9 +185,9 @@ export function ReaderDock({ post, summary, onClose }: Props) {
               <div className="font-display text-lg font-semibold">Meet the Listen button</div>
             </div>
             <p className="mt-4 text-sm text-foreground/85 leading-relaxed">
-              Hit <b>Listen</b> and I'll read this post out loud so you can keep working in chat. When I finish the post,
-              I'll ask if you want the comments next. You can minimize this panel — I'll keep reading and ping you
-              from the top-right when it's time for more.
+              Hit <b>Listen</b> and I'll read you <b>my take</b> on this thread — not the raw post, just the summary I wrote.
+              When I'm done, I'll offer to read the top comments too. You can minimize this panel and keep chatting;
+              I'll ping you from the top-right when I need an answer.
             </p>
             <div className="mt-5 flex justify-end gap-2">
               <button onClick={() => setShowTutorial(false)} className="rounded-full border border-border px-4 py-1.5 text-xs hover:bg-muted">Maybe later</button>
