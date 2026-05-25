@@ -25,6 +25,7 @@ export const updateMyProfile = createServerFn({ method: "POST" })
       voice_provider: z.enum(["elevenlabs", "browser"]).optional(),
       tone: z.number().int().min(1).max(5).optional(),
       onboarded: z.boolean().optional(),
+      birthday: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     }).parse(input),
   )
   .handler(async ({ data, context }) => {
