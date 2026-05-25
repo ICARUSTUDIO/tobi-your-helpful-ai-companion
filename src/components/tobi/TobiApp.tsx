@@ -478,6 +478,13 @@ export function TobiApp() {
         refreshKey={historyKey}
       />
 
+      <MemoryDrawer
+        open={memoryOpen}
+        onClose={() => setMemoryOpen(false)}
+        name={profile?.name ?? null}
+        onChange={setFacts}
+      />
+
       {needsOnboarding && (
         <OnboardingModal initialName={profile?.name || (user?.user_metadata as any)?.name || ""} onSubmit={onboard} />
       )}
