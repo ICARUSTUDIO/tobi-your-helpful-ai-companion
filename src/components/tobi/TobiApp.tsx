@@ -1,11 +1,25 @@
 import { useEffect, useRef, useState } from "react";
+import { useServerFn } from "@tanstack/react-start";
 import { Message } from "./Message";
 import { MapOverlay } from "./MapOverlay";
 import { ReaderDock } from "./ReaderDock";
 import { DevConsole, type DevLog } from "./DevConsole";
 import { parseDocument } from "./parseDoc";
 import { TobiLogo } from "./TobiLogo";
+import { OnboardingModal } from "./OnboardingModal";
+import { HistorySidebar } from "./HistorySidebar";
+import { UserMenu } from "./UserMenu";
 import type { ChatMessage, Place, RedditPost } from "./types";
+import { useAuth } from "@/hooks/useAuth";
+import { getMyProfile, updateMyProfile } from "@/lib/profile.functions";
+import {
+  createConversation,
+  saveMessage,
+  loadConversation,
+  listFacts,
+  renameConversation,
+} from "@/lib/conversations.functions";
+import { extractAndSaveFacts } from "@/lib/facts.functions";
 
 const SUGGESTIONS = [
   "Write a Python function that debounces async calls",
@@ -17,6 +31,25 @@ const SUGGESTIONS = [
 function uid() { return Math.random().toString(36).slice(2); }
 
 export function TobiApp() {
+  const { user, loading: authLoading } = useAuth();
+
+  // Server fns
+  const fetchProfile = useServerFn(getMyProfile);
+  const saveProfile = useServerFn(updateMyProfile);
+  const newConvo = useServerFn(createConversation);
+  const saveMsg = useServerFn(saveMessage);
+  const loadConvo = useServerFn(loadConversation);
+  const fetchFacts = useServerFn(listFacts);
+  const renameConvo = useServerFn(renameConversation);
+  const extractFacts = useServerFn(extractAndSaveFacts);
+
+  const [profile, setProfile] = useState<any>(null);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [facts, setFacts] = useState<string[]>([]);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyKey, setHistoryKey] = useState(0);
+
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [research, setResearch] = useState(false);
@@ -33,6 +66,16 @@ export function TobiApp() {
   const abortRef = useRef<AbortController | null>(null);
   const [pendingPrompt, setPendingPrompt] = useState<{ text: string; mode: "normal" | "research" } | null>(null);
 
+  // Load profile + facts when signed in
+  useEffect(() => {
+    if (!user) return;
+    setProfileLoading(true);
+    Promise.all([fetchProfile(), fetchFacts().catch(() => [])]).then(([p, f]) => {
+      setProfile(p);
+      setFacts((f as any[]).map((x) => x.fact));
+      setProfileLoading(false);
+    }).catch(() => setProfileLoading(false));
+  }, [user, fetchProfile, fetchFacts]);
 
   useEffect(() => {
     const saved = (typeof localStorage !== "undefined" && localStorage.getItem("tobi-theme")) as "dark" | "light" | null;
@@ -50,7 +93,6 @@ export function TobiApp() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
-  // Hidden dev console hotkey: Ctrl/Cmd + `
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && e.key === "`") {
@@ -61,6 +103,14 @@ export function TobiApp() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+
+  async function ensureConversation(): Promise<string> {
+    if (conversationId) return conversationId;
+    const c = await newConvo();
+    setConversationId(c.id);
+    setHistoryKey((k) => k + 1);
+    return c.id;
+  }
 
   async function handleFiles(files: FileList | null) {
     if (!files) return;
@@ -102,10 +152,24 @@ export function TobiApp() {
     });
 
     try {
+      const convId = await ensureConversation();
+
+      // Save user message
+      saveMsg({ data: { conversation_id: convId, role: "user", content: userMsg.content, mode } }).catch(() => {});
+
+      // Extract facts in the background
+      extractFacts({ data: { message: userMsg.content } }).then((r) => {
+        if (r.facts.length) setFacts((prev) => [...r.facts, ...prev].slice(0, 30));
+      }).catch(() => {});
+
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode, messages: payloadMessages }),
+        body: JSON.stringify({
+          mode,
+          messages: payloadMessages,
+          user: profile ? { name: profile.name, age: profile.age, facts: facts.slice(0, 15) } : undefined,
+        }),
         signal: controller.signal,
       });
       const data = await res.json();
@@ -124,6 +188,22 @@ export function TobiApp() {
       setMessages([...nextMessages, reply]);
       if (data.places?.length > 0) setMapView({ places: data.places, summary: data.text || "" });
       if (data.post) setReader({ post: data.post, summary: data.text || "" });
+
+      // Save assistant message + auto-title first turn
+      saveMsg({
+        data: {
+          conversation_id: convId,
+          role: "assistant",
+          content: data.text || "",
+          post: data.post ?? undefined,
+          places: data.places ?? undefined,
+          mode,
+        },
+      }).catch(() => {});
+      if (baseMessages.length === 0) {
+        const title = userMsg.content.slice(0, 60).trim() || "New chat";
+        renameConvo({ data: { id: convId, title } }).then(() => setHistoryKey((k) => k + 1)).catch(() => {});
+      }
     } catch (e: any) {
       if (e?.name === "AbortError") {
         setDevLogs((prev) => [...prev, { t: Date.now(), level: "warn", tag: "client", msg: "stopped by user" }]);
@@ -176,7 +256,6 @@ export function TobiApp() {
     if (idx < 0) return;
     const original = messages[idx];
     if (original.role !== "user") return;
-    // Keep existing conversation intact; just load the prompt into the input for editing.
     setInput(original.content);
     setTimeout(() => {
       const el = inputRef.current;
@@ -189,22 +268,80 @@ export function TobiApp() {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
   }
 
+  function newChat() {
+    setMessages([]);
+    setConversationId(null);
+    setMapView(null);
+    setReader(null);
+    setInput("");
+    setPendingDocs([]);
+  }
+
+  async function selectConversation(id: string) {
+    setConversationId(id);
+    setMapView(null);
+    setReader(null);
+    try {
+      const msgs = await loadConvo({ data: { id } });
+      const mapped: ChatMessage[] = (msgs as any[]).map((m) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        post: m.post ?? null,
+        places: m.places ?? null,
+        mode: m.mode ?? undefined,
+      }));
+      setMessages(mapped);
+    } catch (e: any) {
+      setMessages([{ id: uid(), role: "assistant", content: `⚠️ Couldn't load that chat: ${e?.message}` }]);
+    }
+  }
+
+  async function onboard(data: { name: string; age: number }) {
+    const updated = await saveProfile({ data: { name: data.name, age: data.age, onboarded: true } });
+    setProfile(updated);
+  }
+
+  if (authLoading || profileLoading) {
+    return (
+      <div className="grid place-items-center h-[100dvh] bg-background text-foreground">
+        <div className="flex items-center gap-3 text-sm text-muted-foreground">
+          <TobiLogo className="size-9 rounded-xl" markClassName="size-7" />
+          Loading…
+        </div>
+      </div>
+    );
+  }
+
+  const needsOnboarding = profile && !profile.onboarded;
+
   return (
     <div className="relative h-[100dvh] w-full overflow-hidden bg-background text-foreground flex flex-col">
       <div className="pointer-events-none absolute -top-40 -left-40 size-[500px] rounded-full opacity-20" style={{ background: "radial-gradient(circle, var(--tobi-glow), transparent 60%)" }} />
       <div className="pointer-events-none absolute -bottom-40 -right-40 size-[600px] rounded-full opacity-15" style={{ background: "radial-gradient(circle, oklch(0.55 0.22 270), transparent 60%)" }} />
 
       <header className="relative z-10 flex items-center justify-between px-6 py-4 border-b border-border/60 backdrop-blur-sm">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          <button onClick={() => setHistoryOpen(true)} className="size-9 grid place-items-center rounded-xl border border-border bg-card/60 hover:bg-card transition" title="Chats">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          </button>
           <TobiLogo className="size-9 rounded-xl" markClassName="size-7" />
           <div>
             <div className="font-display text-lg font-semibold tracking-tight">Tobi</div>
-            <div className="text-[11px] text-muted-foreground -mt-0.5">your interactive AI</div>
+            <div className="text-[11px] text-muted-foreground -mt-0.5">{profile?.name ? `for ${profile.name}` : "your interactive AI"}</div>
           </div>
         </div>
-        <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")} className="rounded-full border border-border bg-card/60 backdrop-blur px-3 py-1.5 text-xs hover:bg-card transition" aria-label="Toggle theme">
-          {theme === "dark" ? "☾ Dark" : "☀ Light"}
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")} className="rounded-full border border-border bg-card/60 backdrop-blur px-3 py-1.5 text-xs hover:bg-card transition" aria-label="Toggle theme">
+            {theme === "dark" ? "☾" : "☀"}
+          </button>
+          <UserMenu
+            name={profile?.name ?? null}
+            email={user?.email ?? null}
+            onOpenHistory={() => setHistoryOpen(true)}
+            onNewChat={newChat}
+          />
+        </div>
       </header>
 
       <main ref={scrollRef} className="relative z-0 flex-1 overflow-y-auto scrollbar-thin">
@@ -213,9 +350,11 @@ export function TobiApp() {
             <div className="pt-12 text-center space-y-6">
               <TobiLogo className="mx-auto size-20 rounded-3xl" markClassName="size-14" />
               <div>
-                <h1 className="font-display text-3xl font-semibold tracking-tight">Hey, I'm Tobi.</h1>
+                <h1 className="font-display text-3xl font-semibold tracking-tight">
+                  {profile?.name ? `Yo ${profile.name}, what's good?` : "Hey, I'm Tobi."}
+                </h1>
                 <p className="mt-2 text-muted-foreground text-sm max-w-md mx-auto">
-                  I write code, hunt bugs, dive deep into research, find places on a map, pull Reddit threads (with a Listen button), and read your Word / Excel docs.
+                  I write code, hunt bugs, dive deep into research, find places on a map, pull threads from anywhere, and read your Word / Excel docs.
                 </p>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-xl mx-auto pt-4">
@@ -327,6 +466,18 @@ export function TobiApp() {
       )}
       <DevConsole logs={devLogs} open={devOpen} onClose={() => setDevOpen(false)} onClear={() => setDevLogs([])} />
 
+      <HistorySidebar
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        activeId={conversationId}
+        onSelect={selectConversation}
+        onNew={newChat}
+        refreshKey={historyKey}
+      />
+
+      {needsOnboarding && (
+        <OnboardingModal initialName={profile?.name || (user?.user_metadata as any)?.name || ""} onSubmit={onboard} />
+      )}
     </div>
   );
 }

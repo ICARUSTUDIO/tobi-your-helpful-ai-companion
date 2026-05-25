@@ -16,65 +16,152 @@ interface Props {
 function useTTS() {
   const [speaking, setSpeaking] = useState(false);
   const [paused, setPaused] = useState(false);
-  const [voiceName, setVoiceName] = useState<string>("Natural browser voice");
-  const [intensity, setIntensity] = useState(0); // 0..1, pulses on each spoken word
-  const queueRef = useRef<SpeechSynthesisUtterance[]>([]);
+  const [voiceName, setVoiceName] = useState<string>("Sarah · ElevenLabs");
+  const [intensity, setIntensity] = useState(0);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const cancelledRef = useRef(false);
   const onDoneRef = useRef<(() => void) | null>(null);
-  const decayRef = useRef<number | null>(null);
+  const usingBrowserRef = useRef(false);
 
-  useEffect(() => () => {
+  useEffect(() => () => { hardStop(); }, []);
+
+  function stopRaf() {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = null;
+  }
+
+  function hardStop() {
+    cancelledRef.current = true;
+    try { audioRef.current?.pause(); } catch {}
+    audioRef.current = null;
     try { window.speechSynthesis?.cancel(); } catch {}
-    if (decayRef.current) cancelAnimationFrame(decayRef.current);
-  }, []);
-
-  function startDecay() {
-    if (decayRef.current) cancelAnimationFrame(decayRef.current);
-    const tick = () => {
-      setIntensity((v) => Math.max(0, v - 0.04));
-      decayRef.current = requestAnimationFrame(tick);
-    };
-    decayRef.current = requestAnimationFrame(tick);
-  }
-  function stopDecay() {
-    if (decayRef.current) cancelAnimationFrame(decayRef.current);
-    decayRef.current = null;
+    stopRaf();
     setIntensity(0);
+    setSpeaking(false);
+    setPaused(false);
   }
 
-  function speak(chunks: string[], onDone?: () => void) {
-    if (typeof window === "undefined" || !window.speechSynthesis) return;
+  function startAnalyser(audio: HTMLAudioElement) {
+    try {
+      if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const ctx = audioCtxRef.current;
+      const src = ctx.createMediaElementSource(audio);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 256;
+      src.connect(analyser);
+      analyser.connect(ctx.destination);
+      analyserRef.current = analyser;
+      const buf = new Uint8Array(analyser.frequencyBinCount);
+      const tick = () => {
+        analyser.getByteFrequencyData(buf);
+        let sum = 0;
+        for (let i = 0; i < buf.length; i++) sum += buf[i];
+        const avg = sum / buf.length / 255;
+        setIntensity(Math.min(1, avg * 2.2));
+        rafRef.current = requestAnimationFrame(tick);
+      };
+      rafRef.current = requestAnimationFrame(tick);
+    } catch {
+      const tick = () => {
+        setIntensity(0.35 + Math.random() * 0.55);
+        rafRef.current = requestAnimationFrame(tick);
+      };
+      rafRef.current = requestAnimationFrame(tick);
+    }
+  }
+
+  async function playElevenLabs(text: string): Promise<boolean> {
+    const res = await fetch("/api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    if (!res.ok) return false;
+    const blob = await res.blob();
+    if (cancelledRef.current) return false;
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    audioRef.current = audio;
+    startAnalyser(audio);
+    try { await audio.play(); } catch { URL.revokeObjectURL(url); return false; }
+    return await new Promise<boolean>((resolve) => {
+      audio.onended = () => { stopRaf(); URL.revokeObjectURL(url); resolve(true); };
+      audio.onerror = () => { stopRaf(); URL.revokeObjectURL(url); resolve(false); };
+      audio.onpause = () => {
+        if (cancelledRef.current) { URL.revokeObjectURL(url); resolve(false); }
+      };
+    });
+  }
+
+  function speakBrowser(chunks: string[], onDone?: () => void) {
+    usingBrowserRef.current = true;
+    if (typeof window === "undefined" || !window.speechSynthesis) { onDone?.(); return; }
     window.speechSynthesis.cancel();
-    queueRef.current = [];
-    onDoneRef.current = onDone || null;
     const voices = window.speechSynthesis.getVoices();
-    const preferredVoice = voices.find((v) => /natural|premium|enhanced|neural|samantha|ava|alloy|google us english|microsoft aria/i.test(v.name))
-      || voices.find((v) => /^en[-_]/i.test(v.lang) && !/compact|novelty|whisper|bells|bad news/i.test(v.name))
-      || voices[0];
-    if (preferredVoice) setVoiceName(preferredVoice.name);
+    const v = voices.find((x) => /samantha|ava|natural|premium|neural|google us english|microsoft aria/i.test(x.name))
+      || voices.find((x) => /^en/i.test(x.lang)) || voices[0];
+    if (v) setVoiceName(`${v.name} · browser`);
+    const fake = () => {
+      setIntensity(0.4 + Math.random() * 0.55);
+      rafRef.current = requestAnimationFrame(fake);
+    };
+    rafRef.current = requestAnimationFrame(fake);
     chunks.forEach((text, i) => {
       const u = new SpeechSynthesisUtterance(text);
-      if (preferredVoice) u.voice = preferredVoice;
-      u.rate = 0.92;
-      u.pitch = 0.96;
-      u.volume = 0.92;
-      u.onboundary = () => setIntensity(0.6 + Math.random() * 0.4);
+      if (v) u.voice = v;
+      u.rate = 1.02; u.pitch = 1.0;
       if (i === chunks.length - 1) {
-        u.onend = () => { setSpeaking(false); setPaused(false); stopDecay(); onDoneRef.current?.(); };
+        u.onend = () => { stopRaf(); setSpeaking(false); setPaused(false); setIntensity(0); onDone?.(); };
       }
-      queueRef.current.push(u);
       window.speechSynthesis.speak(u);
     });
-    setSpeaking(true); setPaused(false);
-    startDecay();
   }
-  function pause() { window.speechSynthesis.pause(); setPaused(true); stopDecay(); }
-  function resume() { window.speechSynthesis.resume(); setPaused(false); startDecay(); }
-  function stop() { window.speechSynthesis.cancel(); setSpeaking(false); setPaused(false); stopDecay(); }
+
+  async function speak(chunks: string[], onDone?: () => void) {
+    hardStop();
+    cancelledRef.current = false;
+    onDoneRef.current = onDone || null;
+    setSpeaking(true);
+    usingBrowserRef.current = false;
+    setVoiceName("Sarah · ElevenLabs");
+
+    for (let i = 0; i < chunks.length; i++) {
+      if (cancelledRef.current) return;
+      let ok = false;
+      try { ok = await playElevenLabs(chunks[i]); } catch { ok = false; }
+      if (cancelledRef.current) return;
+      if (!ok) {
+        speakBrowser(chunks.slice(i), () => onDoneRef.current?.());
+        return;
+      }
+    }
+    setSpeaking(false);
+    setIntensity(0);
+    onDoneRef.current?.();
+  }
+
+  function pause() {
+    if (usingBrowserRef.current) window.speechSynthesis?.pause();
+    else audioRef.current?.pause();
+    setPaused(true);
+  }
+  function resume() {
+    if (usingBrowserRef.current) window.speechSynthesis?.resume();
+    else audioRef.current?.play().catch(() => {});
+    setPaused(false);
+  }
+  function stop() { hardStop(); onDoneRef.current = null; }
+
   return { speaking, paused, voiceName, intensity, speak, pause, resume, stop };
 }
 
-function chunkText(s: string, max = 140): string[] {
-  const sents = s.replace(/\s+/g, " ").split(/(?<=[.!?])\s+/);
+function chunkText(s: string, max = 1200): string[] {
+  const clean = s.replace(/\s+/g, " ").trim();
+  if (clean.length <= max) return [clean];
+  const sents = clean.split(/(?<=[.!?])\s+/);
   const out: string[] = []; let buf = "";
   for (const x of sents) {
     if ((buf + " " + x).length > max) { if (buf) out.push(buf); buf = x; }
