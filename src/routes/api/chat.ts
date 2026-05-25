@@ -619,6 +619,7 @@ export const Route = createFileRoute("/api/chat")({
 
           let collectedPlaces: any[] | null = null;
           let collectedPost: any = null;
+          let collectedFiles: { name: string; mime: string; content: string; encoding: "utf8" | "base64" }[] = [];
           let toolUsed: string | null = null;
 
           for (let i = 0; i < 3; i++) {
