@@ -247,7 +247,7 @@ export function TobiApp() {
       )}
       <button
         onClick={() => setDevOpen((v) => !v)}
-        title="Developer console (Ctrl/Cmd + ` )"
+        title="Developer console (Ctrl + Backtick ` )"
         className="fixed bottom-3 left-3 z-[101] size-7 rounded-full bg-black/70 border border-emerald-500/40 text-emerald-400 font-mono text-[11px] grid place-items-center hover:bg-black/90 hover:border-emerald-400/70 transition shadow-lg"
         aria-label="Toggle developer console"
       >
