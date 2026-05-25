@@ -21,6 +21,8 @@ import {
   renameConversation,
 } from "@/lib/conversations.functions";
 import { extractAndSaveFacts } from "@/lib/facts.functions";
+import { submitTrainingData } from "@/lib/training.functions";
+import { TrainTobiModal } from "./TrainTobiModal";
 
 const SUGGESTIONS = [
   "Write a Python function that debounces async calls",
@@ -43,6 +45,8 @@ export function TobiApp() {
   const fetchFacts = useServerFn(listFacts);
   const renameConvo = useServerFn(renameConversation);
   const extractFacts = useServerFn(extractAndSaveFacts);
+  const submitTraining = useServerFn(submitTrainingData);
+  const [trainPrompt, setTrainPrompt] = useState<null | { convoId: string | null; messages: ChatMessage[] }>(null);
 
   const [profile, setProfile] = useState<any>(null);
   const [profileLoading, setProfileLoading] = useState(true);
@@ -271,13 +275,27 @@ export function TobiApp() {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
   }
 
-  function newChat() {
+  function maybeAskToTrain(): boolean {
+    const exchanges = messages.filter((m) => m.role === "user" || m.role === "assistant");
+    if (exchanges.length >= 4 && conversationId) {
+      setTrainPrompt({ convoId: conversationId, messages: exchanges });
+      return true;
+    }
+    return false;
+  }
+
+  function resetChatState() {
     setMessages([]);
     setConversationId(null);
     setMapView(null);
     setReader(null);
     setInput("");
     setPendingDocs([]);
+  }
+
+  function newChat() {
+    if (maybeAskToTrain()) return;
+    resetChatState();
   }
 
   async function selectConversation(id: string) {
@@ -503,6 +521,24 @@ export function TobiApp() {
 
       {needsOnboarding && (
         <OnboardingModal initialName={profile?.name || (user?.user_metadata as any)?.name || ""} onSubmit={onboard} />
+      )}
+
+      {trainPrompt && (
+        <TrainTobiModal
+          onYes={async () => {
+            try {
+              await submitTraining({
+                data: {
+                  conversationId: trainPrompt.convoId,
+                  messages: trainPrompt.messages.map((m) => ({ role: m.role, content: m.content })),
+                },
+              });
+            } catch (e) {
+              console.error("training submit failed", e);
+            }
+          }}
+          onNo={() => { setTrainPrompt(null); resetChatState(); }}
+        />
       )}
     </div>
   );
