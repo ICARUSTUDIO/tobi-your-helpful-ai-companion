@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { TobiLogo } from "./TobiLogo";
 import type { RedditPost } from "./types";
 
 type Mode = "expanded" | "docked" | "hidden";
@@ -15,6 +16,7 @@ interface Props {
 function useTTS() {
   const [speaking, setSpeaking] = useState(false);
   const [paused, setPaused] = useState(false);
+  const [voiceName, setVoiceName] = useState<string>("Natural browser voice");
   const queueRef = useRef<SpeechSynthesisUtterance[]>([]);
   const onDoneRef = useRef<(() => void) | null>(null);
 
@@ -25,9 +27,17 @@ function useTTS() {
     window.speechSynthesis.cancel();
     queueRef.current = [];
     onDoneRef.current = onDone || null;
+    const voices = window.speechSynthesis.getVoices();
+    const preferredVoice = voices.find((v) => /natural|premium|enhanced|neural|samantha|ava|alloy|google us english|microsoft aria/i.test(v.name))
+      || voices.find((v) => /^en[-_]/i.test(v.lang) && !/compact|novelty|whisper|bells|bad news/i.test(v.name))
+      || voices[0];
+    if (preferredVoice) setVoiceName(preferredVoice.name);
     chunks.forEach((text, i) => {
       const u = new SpeechSynthesisUtterance(text);
-      u.rate = 1.05; u.pitch = 1;
+      if (preferredVoice) u.voice = preferredVoice;
+      u.rate = 0.72;
+      u.pitch = 0.96;
+      u.volume = 0.92;
       if (i === chunks.length - 1) {
         u.onend = () => { setSpeaking(false); setPaused(false); onDoneRef.current?.(); };
       }
@@ -39,10 +49,10 @@ function useTTS() {
   function pause() { window.speechSynthesis.pause(); setPaused(true); }
   function resume() { window.speechSynthesis.resume(); setPaused(false); }
   function stop() { window.speechSynthesis.cancel(); setSpeaking(false); setPaused(false); }
-  return { speaking, paused, speak, pause, resume, stop };
+  return { speaking, paused, voiceName, speak, pause, resume, stop };
 }
 
-function chunkText(s: string, max = 220): string[] {
+function chunkText(s: string, max = 140): string[] {
   const sents = s.replace(/\s+/g, " ").split(/(?<=[.!?])\s+/);
   const out: string[] = []; let buf = "";
   for (const x of sents) {
@@ -167,7 +177,7 @@ export function ReaderDock({ post, summary, onClose }: Props) {
         <div className="fixed inset-0 z-50 grid place-items-center bg-background/70 backdrop-blur-sm animate-in fade-in" onClick={() => setShowTutorial(false)}>
           <div className="max-w-md mx-4 rounded-3xl bg-card border border-tobi/40 p-6 shadow-2xl glow-ring" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-3">
-              <div className="size-10 rounded-2xl tobi-orb grid place-items-center text-background font-bold">T</div>
+              <TobiLogo className="size-10 rounded-2xl" markClassName="size-8" />
               <div className="font-display text-lg font-semibold">Meet the Listen button</div>
             </div>
             <p className="mt-4 text-sm text-foreground/85 leading-relaxed">
@@ -210,7 +220,7 @@ export function ReaderDock({ post, summary, onClose }: Props) {
             <>
               <button onClick={tts.paused ? tts.resume : tts.pause} className="rounded-full border border-tobi/60 px-3 py-1.5 text-xs hover:bg-tobi/10">{tts.paused ? "Resume" : "Pause"}</button>
               <button onClick={tts.stop} className="rounded-full border border-border px-3 py-1.5 text-xs hover:bg-muted">Stop</button>
-              <span className="text-[10px] text-muted-foreground ml-1">{tts.paused ? "Paused" : "Reading…"}</span>
+              <span className="text-[10px] text-muted-foreground ml-1 truncate">{tts.paused ? "Paused" : `Reading slowly · ${tts.voiceName}`}</span>
             </>
           )}
           <a href={post.url} target="_blank" rel="noreferrer" className="ml-auto text-[11px] text-tobi hover:underline">Open on Reddit ↗</a>
