@@ -202,9 +202,9 @@ export const Route = createFileRoute("/api/chat")({
           const convo: any[] = [{ role: "system", content: sys }, ...messages];
 
           let collectedPlaces: any[] | null = null;
+          let collectedPost: any = null;
           let toolUsed: string | null = null;
 
-          // Tool-call loop (max 3 iterations to be safe)
           for (let i = 0; i < 3; i++) {
             const data = await callAI(convo, mode);
             const choice = data.choices?.[0];
@@ -215,26 +215,36 @@ export const Route = createFileRoute("/api/chat")({
             if (toolCalls && toolCalls.length > 0) {
               convo.push(msg);
               for (const tc of toolCalls) {
-                if (tc.function?.name === "find_places") {
-                  let args: any = {};
-                  try { args = JSON.parse(tc.function.arguments || "{}"); } catch {}
+                const name = tc.function?.name;
+                let args: any = {};
+                try { args = JSON.parse(tc.function.arguments || "{}"); } catch {}
+
+                if (name === "find_places") {
                   try {
                     const places = await findPlaces(String(args.query || ""), args.near ? String(args.near) : undefined);
                     collectedPlaces = places;
                     toolUsed = "find_places";
+                    convo.push({ role: "tool", tool_call_id: tc.id, name, content: JSON.stringify({ count: places.length, places: places.slice(0, 8) }) });
+                  } catch (e: any) {
+                    convo.push({ role: "tool", tool_call_id: tc.id, name, content: JSON.stringify({ error: e?.message || "tool failed" }) });
+                  }
+                } else if (name === "fetch_reddit") {
+                  try {
+                    const post = await fetchReddit(args);
+                    collectedPost = post;
+                    toolUsed = "fetch_reddit";
+                    // Send the model a compact view (title + body + first 5 comments)
                     convo.push({
-                      role: "tool",
-                      tool_call_id: tc.id,
-                      name: "find_places",
-                      content: JSON.stringify({ count: places.length, places: places.slice(0, 8) }),
+                      role: "tool", tool_call_id: tc.id, name,
+                      content: JSON.stringify({
+                        title: post.title, subreddit: post.subreddit, author: post.author,
+                        score: post.score, numComments: post.numComments,
+                        body: post.body.slice(0, 1500),
+                        topComments: post.comments.slice(0, 5).map((c: any) => ({ author: c.author, score: c.score, body: c.body.slice(0, 400) })),
+                      }),
                     });
                   } catch (e: any) {
-                    convo.push({
-                      role: "tool",
-                      tool_call_id: tc.id,
-                      name: "find_places",
-                      content: JSON.stringify({ error: e?.message || "tool failed" }),
-                    });
+                    convo.push({ role: "tool", tool_call_id: tc.id, name, content: JSON.stringify({ error: e?.message || "tool failed" }) });
                   }
                 }
               }
@@ -244,11 +254,12 @@ export const Route = createFileRoute("/api/chat")({
             return new Response(JSON.stringify({
               text: msg.content ?? "",
               places: collectedPlaces,
+              post: collectedPost,
               tool: toolUsed,
             }), { headers: { "Content-Type": "application/json" } });
           }
 
-          return new Response(JSON.stringify({ text: "I had trouble finishing that thought — try again?", places: collectedPlaces, tool: toolUsed }), { headers: { "Content-Type": "application/json" } });
+          return new Response(JSON.stringify({ text: "I had trouble finishing that thought — try again?", places: collectedPlaces, post: collectedPost, tool: toolUsed }), { headers: { "Content-Type": "application/json" } });
         } catch (e: any) {
           if (e instanceof Response) return e;
           console.error("chat error", e);
