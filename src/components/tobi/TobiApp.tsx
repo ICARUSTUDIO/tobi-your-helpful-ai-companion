@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Message } from "./Message";
 import { MapOverlay } from "./MapOverlay";
 import { ReaderDock } from "./ReaderDock";
+import { DevConsole, type DevLog } from "./DevConsole";
 import { parseDocument } from "./parseDoc";
 import type { ChatMessage, Place, RedditPost } from "./types";
 
@@ -23,6 +24,8 @@ export function TobiApp() {
   const [mapView, setMapView] = useState<{ places: Place[]; summary: string } | null>(null);
   const [reader, setReader] = useState<{ post: RedditPost; summary: string } | null>(null);
   const [pendingDocs, setPendingDocs] = useState<{ name: string; kind: "docx" | "xlsx"; text: string; preview: string }[]>([]);
+  const [devLogs, setDevLogs] = useState<DevLog[]>([]);
+  const [devOpen, setDevOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -42,6 +45,18 @@ export function TobiApp() {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
+
+  // Hidden dev console hotkey: Ctrl/Cmd + `
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key === "`") {
+        e.preventDefault();
+        setDevOpen((v) => !v);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   async function handleFiles(files: FileList | null) {
     if (!files) return;
@@ -88,6 +103,9 @@ export function TobiApp() {
         body: JSON.stringify({ mode: research ? "research" : "normal", messages: payloadMessages }),
       });
       const data = await res.json();
+      if (Array.isArray(data?.logs)) {
+        setDevLogs((prev) => [...prev, { t: Date.now(), level: "info", tag: "client", msg: `── request "${userContent.slice(0, 60)}" ──` }, ...data.logs]);
+      }
       if (!res.ok) throw new Error(data?.error || `Request failed (${res.status})`);
 
       const reply: ChatMessage = {
@@ -101,6 +119,7 @@ export function TobiApp() {
       if (data.places?.length > 0) setMapView({ places: data.places, summary: data.text || "" });
       if (data.post) setReader({ post: data.post, summary: data.text || "" });
     } catch (e: any) {
+      setDevLogs((prev) => [...prev, { t: Date.now(), level: "error", tag: "client", msg: e?.message || "request failed" }]);
       setMessages([...nextMessages, { id: pendingId, role: "assistant", content: `⚠️ ${e?.message || "Something went wrong."}` }]);
     } finally {
       setBusy(false); setResearch(false); inputRef.current?.focus();
@@ -226,6 +245,7 @@ export function TobiApp() {
       {reader && (
         <ReaderDock post={reader.post} summary={reader.summary} onClose={() => setReader(null)} />
       )}
+      <DevConsole logs={devLogs} open={devOpen} onClose={() => setDevOpen(false)} onClear={() => setDevLogs([])} />
     </div>
   );
 }
