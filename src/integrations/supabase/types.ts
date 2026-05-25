@@ -38,6 +38,38 @@ export type Database = {
         }
         Relationships: []
       }
+      global_knowledge: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          fact: string
+          id: string
+          source_submission_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          fact: string
+          id?: string
+          source_submission_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          fact?: string
+          id?: string
+          source_submission_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "global_knowledge_source_submission_id_fkey"
+            columns: ["source_submission_id"]
+            isOneToOne: false
+            referencedRelation: "training_submissions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       messages: {
         Row: {
           content: string
@@ -124,6 +156,45 @@ export type Database = {
         }
         Relationships: []
       }
+      training_submissions: {
+        Row: {
+          ai_summary: string | null
+          conversation_id: string | null
+          created_at: string
+          id: string
+          raw_messages: Json
+          reviewed_at: string | null
+          reviewed_by: string | null
+          reviewer_note: string | null
+          status: Database["public"]["Enums"]["submission_status"]
+          user_id: string
+        }
+        Insert: {
+          ai_summary?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          id?: string
+          raw_messages: Json
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          reviewer_note?: string | null
+          status?: Database["public"]["Enums"]["submission_status"]
+          user_id: string
+        }
+        Update: {
+          ai_summary?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          id?: string
+          raw_messages?: Json
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          reviewer_note?: string | null
+          status?: Database["public"]["Enums"]["submission_status"]
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_facts: {
         Row: {
           created_at: string
@@ -145,15 +216,43 @@ export type Database = {
         }
         Relationships: []
       }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin"
+      submission_status: "pending" | "approved" | "rejected"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -280,6 +379,9 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin"],
+      submission_status: ["pending", "approved", "rejected"],
+    },
   },
 } as const
