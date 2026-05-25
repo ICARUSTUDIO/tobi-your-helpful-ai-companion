@@ -111,7 +111,42 @@ const tools = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "create_file",
+      description: "Produce a downloadable file for the user. Use whenever the user asks to download, export, save as a file, edit an attached document and give it back, or generate any kind of file (resume, report, code file, spreadsheet, markdown notes, HTML page, JSON, CSV, .txt, .py, .js, .ts, .html, .md, .csv, .json, .xml, .yaml, .sql, etc.). Put the FULL final file contents in `content`. For binary formats, base64-encode and set encoding='base64'. After calling, write a short friendly note — the UI shows the download button.",
+      parameters: {
+        type: "object",
+        properties: {
+          filename: { type: "string", description: "Filename with extension, e.g. 'resume.md', 'report.csv', 'app.py'" },
+          mime_type: { type: "string", description: "MIME type, e.g. 'text/markdown', 'text/csv', 'application/json', 'text/plain', 'text/html'" },
+          content: { type: "string", description: "Full file contents. Text by default; base64 string if encoding='base64'." },
+          encoding: { type: "string", enum: ["utf8", "base64"], description: "Defaults to utf8." },
+        },
+        required: ["filename", "mime_type", "content"],
+        additionalProperties: false,
+      },
+    },
+  },
 ];
+
+// Reddit's anti-bot / login wall leaks into scraped fallbacks. Detect & strip.
+const REDDIT_BLOCK_MARKERS = [
+  "log in to your reddit account",
+  "use your developer token",
+  "you've been blocked",
+  "if you think you've been blocked",
+  "file a ticket",
+  "log infile a ticket",
+  "are you a human",
+  "press and hold",
+  "verify you are a human",
+];
+function looksBlocked(text: string) {
+  const t = text.toLowerCase();
+  return REDDIT_BLOCK_MARKERS.some((m) => t.includes(m));
+}
 
 // ---- Dev log buffer (per-request) ----
 type LogEntry = { t: number; level: "info" | "warn" | "error"; tag: string; msg: string; data?: any };
