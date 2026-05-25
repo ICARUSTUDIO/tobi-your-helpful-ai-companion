@@ -342,6 +342,111 @@ async function fetchReddit(args: { url?: string; query?: string; subreddit?: str
   };
 }
 
+// ---- Generic social / web fetcher ----
+const PLATFORM_DOMAINS: Record<string, string[]> = {
+  reddit: ["reddit.com"],
+  x: ["x.com", "twitter.com", "nitter.net"],
+  instagram: ["instagram.com"],
+  facebook: ["facebook.com", "m.facebook.com"],
+  tiktok: ["tiktok.com"],
+  youtube: ["youtube.com", "youtu.be"],
+  threads: ["threads.net"],
+  linkedin: ["linkedin.com"],
+  quora: ["quora.com"],
+  hackernews: ["news.ycombinator.com"],
+  web: [],
+};
+
+function detectPlatform(url: string): keyof typeof PLATFORM_DOMAINS {
+  const host = (() => { try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return ""; } })();
+  for (const [p, domains] of Object.entries(PLATFORM_DOMAINS)) {
+    if (domains.some((d) => host === d || host.endsWith("." + d))) return p as any;
+  }
+  return "web";
+}
+
+async function firecrawlSearchSite(query: string, sites: string[], log: ReturnType<typeof makeLogger>) {
+  const FIRECRAWL_API_KEY = process.env.FIRECRAWL_API_KEY;
+  if (!FIRECRAWL_API_KEY) throw new Error("FIRECRAWL_API_KEY not set");
+  const siteFilter = sites.length ? `(${sites.map((s) => `site:${s}`).join(" OR ")}) ` : "";
+  const q = `${siteFilter}${query}`;
+  log.info("social.search", `firecrawl: ${q}`);
+  const res = await fetch("https://api.firecrawl.dev/v2/search", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ query: q, limit: 10 }),
+  });
+  log.info("social.search", `← ${res.status}`);
+  if (!res.ok) throw new Error(`firecrawl search ${res.status}: ${(await res.text()).slice(0, 180)}`);
+  const body = await res.json() as any;
+  const results: any[] = body?.data?.web ?? body?.data?.results ?? (Array.isArray(body?.data) ? body.data : []) ?? [];
+  return results
+    .map((r) => ({ url: String(r?.url || ""), title: String(r?.title || ""), description: String(r?.description || r?.snippet || "") }))
+    .filter((r) => r.url);
+}
+
+async function fetchSocial(args: { url?: string; query?: string; platform?: string; subreddit?: string }, log: ReturnType<typeof makeLogger>) {
+  const platform = (args.platform || (args.url ? detectPlatform(args.url) : "web")) as keyof typeof PLATFORM_DOMAINS;
+
+  // Reddit path keeps the archive flow (richer comments)
+  if (platform === "reddit") {
+    return await fetchReddit({ url: args.url, query: args.query, subreddit: args.subreddit }, log);
+  }
+
+  let targetUrl = args.url || "";
+  let title = "";
+  let description = "";
+  let related: { title: string; url: string; subreddit?: string; score?: number; numComments?: number }[] = [];
+
+  if (!targetUrl) {
+    if (!args.query) throw new Error("Need a url or query");
+    const hits = await firecrawlSearchSite(args.query, PLATFORM_DOMAINS[platform] || [], log);
+    if (hits.length === 0) throw new Error(`No ${platform} results found`);
+    targetUrl = hits[0].url;
+    title = hits[0].title;
+    description = hits[0].description;
+    related = hits.slice(0, 8).map((h) => ({ title: h.title || h.url, url: h.url }));
+    log.info("social.search", `top → ${targetUrl}`);
+  }
+
+  let body = description;
+  let comments: any[] = [];
+  try {
+    const md = await jinaMarkdown(targetUrl, log);
+    const titleLine = md.match(/^Title:\s*(.+)$/m)?.[1];
+    if (titleLine) title = title || titleLine.trim();
+    const contentStart = md.indexOf("Markdown Content:");
+    const content = (contentStart >= 0 ? md.slice(contentStart + 17) : md).trim();
+    body = content.slice(0, 8000);
+    // Heuristic: split into chunks as "comments" so the reader has scrollable replies
+    comments = content
+      .split(/\n\n+/)
+      .map((p) => p.trim())
+      .filter((p) => p.length > 60 && !/^!\[/.test(p))
+      .slice(0, 30)
+      .map((p, i) => ({ id: `s${i}`, author: platform === "x" ? "user" : "reply", body: p, score: 0, depth: 0, createdUtc: 0 }));
+  } catch (e: any) {
+    log.warn("social.jina", `scrape failed: ${e?.message}`);
+    if (!body) body = `Couldn't scrape the page directly. Open it on ${platform}:\n\n${targetUrl}`;
+  }
+
+  const host = (() => { try { return new URL(targetUrl).hostname; } catch { return platform; } })();
+
+  return {
+    id: targetUrl,
+    source: platform as any,
+    subreddit: host,
+    title: title || `${platform} post`,
+    author: platform,
+    body,
+    url: targetUrl,
+    score: 0,
+    numComments: comments.length,
+    related,
+    comments,
+  };
+}
+
 async function findPlaces(query: string, near: string | undefined, log: ReturnType<typeof makeLogger>) {
   const LOVABLE_API_KEY = process.env.LOVABLE_API_KEY;
   const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
