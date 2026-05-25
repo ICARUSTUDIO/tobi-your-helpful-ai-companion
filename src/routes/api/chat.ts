@@ -130,34 +130,60 @@ async function redditFetch(path: string, log: ReturnType<typeof makeLogger>): Pr
       }
     }
   }
-  // 2) fallback: route through r.jina.ai reader proxy — free, no key, edge-friendly.
-  //    Works great for JSON endpoints; jina returns the raw body as text.
+  // 2) fallback: r.jina.ai reader proxy — free, no key. Often rate-limited too.
   for (const host of REDDIT_HOSTS) {
     const url = `https://r.jina.ai/https://${host}${path}`;
     try {
-      log.info("reddit.fetch", `proxy GET ${url}`);
+      log.info("reddit.fetch", `jina GET ${url}`);
       const res = await fetch(url, {
         headers: { "User-Agent": UAS[0], Accept: "application/json, text/plain, */*", "X-Return-Format": "text" },
       });
-      log.info("reddit.fetch", `← proxy ${res.status}`);
+      log.info("reddit.fetch", `← jina ${res.status}`);
       if (!res.ok) { lastErr = `jina(${host}) → ${res.status}`; continue; }
       const text = await res.text();
-      // jina may prepend a title/url header — slice from the first { or [
-      const start = Math.min(
-        ...["{", "["].map((c) => { const i = text.indexOf(c); return i < 0 ? Infinity : i; })
-      );
+      const start = Math.min(...["{", "["].map((c) => { const i = text.indexOf(c); return i < 0 ? Infinity : i; }));
       if (!Number.isFinite(start)) { lastErr = `jina(${host}) → no JSON in body`; continue; }
-      try {
-        return JSON.parse(text.slice(start));
-      } catch (e: any) {
-        lastErr = `jina(${host}) → parse fail (${e?.message})`;
-        log.warn("reddit.fetch", lastErr);
-      }
+      try { return JSON.parse(text.slice(start)); }
+      catch (e: any) { lastErr = `jina(${host}) → parse fail (${e?.message})`; log.warn("reddit.fetch", lastErr); }
     } catch (e: any) {
       lastErr = `jina(${host}) → ${e?.message || e}`;
       log.warn("reddit.fetch", lastErr);
     }
   }
+
+  // 3) final fallback: Firecrawl — paid, very reliable. Scrapes the .json endpoint
+  //    as rawHtml (which for a JSON URL is just the JSON text).
+  const FIRECRAWL_API_KEY = process.env.FIRECRAWL_API_KEY;
+  if (FIRECRAWL_API_KEY) {
+    for (const host of REDDIT_HOSTS) {
+      const target = `https://${host}${path}`;
+      try {
+        log.info("reddit.fetch", `firecrawl scrape ${target}`);
+        const res = await fetch("https://api.firecrawl.dev/v2/scrape", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ url: target, formats: ["rawHtml"], onlyMainContent: false }),
+        });
+        log.info("reddit.fetch", `← firecrawl ${res.status}`);
+        if (!res.ok) { lastErr = `firecrawl(${host}) → ${res.status} ${(await res.text()).slice(0,120)}`; continue; }
+        const body = await res.json() as any;
+        const raw: string = body?.data?.rawHtml || body?.data?.html || body?.data?.markdown || "";
+        if (!raw) { lastErr = `firecrawl(${host}) → empty body`; continue; }
+        // strip any HTML wrapper firecrawl might add around plain JSON
+        const stripped = raw.replace(/<[^>]+>/g, "").trim();
+        const start = Math.min(...["{", "["].map((c) => { const i = stripped.indexOf(c); return i < 0 ? Infinity : i; }));
+        if (!Number.isFinite(start)) { lastErr = `firecrawl(${host}) → no JSON in body`; continue; }
+        try { return JSON.parse(stripped.slice(start)); }
+        catch (e: any) { lastErr = `firecrawl(${host}) → parse fail (${e?.message})`; log.warn("reddit.fetch", lastErr); }
+      } catch (e: any) {
+        lastErr = `firecrawl(${host}) → ${e?.message || e}`;
+        log.warn("reddit.fetch", lastErr);
+      }
+    }
+  } else {
+    log.warn("reddit.fetch", "FIRECRAWL_API_KEY not set — skipping firecrawl fallback");
+  }
+
   throw new Error(`All Reddit routes failed: ${lastErr}`);
 }
 
