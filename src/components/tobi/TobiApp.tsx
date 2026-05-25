@@ -299,10 +299,18 @@ export function TobiApp() {
     }
   }
 
-  async function onboard(data: { name: string; age: number }) {
-    const updated = await saveProfile({ data: { name: data.name, age: data.age, onboarded: true } });
+  async function onboard(data: { name: string; age: number; birthday: string }) {
+    const updated = await saveProfile({ data: { name: data.name, age: data.age, birthday: data.birthday, onboarded: true } });
     setProfile(updated);
   }
+
+  // Birthday check — compares MM-DD to today
+  const isBirthday = (() => {
+    if (!profile?.birthday) return false;
+    const today = new Date();
+    const bd = String(profile.birthday); // yyyy-mm-dd
+    return bd.slice(5, 10) === `${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  })();
 
   if (authLoading || profileLoading) {
     return (
@@ -354,8 +362,15 @@ export function TobiApp() {
               <TobiLogo className="mx-auto size-20 rounded-3xl" markClassName="size-14" />
               <div>
                 <h1 className="font-display text-3xl font-semibold tracking-tight">
-                  {profile?.name ? `Yo ${profile.name}, what's good?` : "Hey, I'm Tobi."}
+                  {isBirthday && profile?.name
+                    ? `🎉 Happy birthday, ${profile.name}!`
+                    : profile?.name
+                      ? `Yo ${profile.name}, what's good?`
+                      : "Hey, I'm Tobi."}
                 </h1>
+                {isBirthday && (
+                  <p className="mt-2 text-tobi text-sm font-medium">Wishing you the best one yet — go enjoy your day, I got the work covered. 🎂</p>
+                )}
                 <p className="mt-2 text-muted-foreground text-sm max-w-md mx-auto">
                   I write code, hunt bugs, dive deep into research, find places on a map, pull threads from anywhere, and read your Word / Excel docs.
                 </p>
