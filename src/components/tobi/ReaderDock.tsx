@@ -203,8 +203,8 @@ export function ReaderDock({ post, summary, onClose }: Props) {
           <div className="flex items-center gap-2 min-w-0">
             <span className={`size-2 rounded-full ${tts.speaking ? "bg-tobi animate-pulse" : "bg-tobi/50"}`} />
             <div className="min-w-0">
-              <div className="text-[10px] uppercase tracking-wider text-tobi font-semibold">Thinking cap · r/{post.subreddit}</div>
-              <div className="text-xs text-muted-foreground truncate">by u/{post.author} · {post.numComments ?? totalComments} comments</div>
+              <div className="text-[10px] uppercase tracking-wider text-tobi font-semibold">Thinking cap · {post.source === "reddit" ? `r/${post.subreddit}` : post.source}</div>
+              <div className="text-xs text-muted-foreground truncate">{post.source === "reddit" ? `by u/${post.author}` : post.subreddit || post.author} · {post.numComments ?? totalComments} replies</div>
             </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
