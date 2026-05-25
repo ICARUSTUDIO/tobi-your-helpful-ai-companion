@@ -2,7 +2,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { ChatMessage } from "./types";
 
-export function Message({ m, onShowMap }: { m: ChatMessage; onShowMap?: () => void }) {
+export function Message({ m, onShowMap, onShowReader }: { m: ChatMessage; onShowMap?: () => void; onShowReader?: () => void }) {
   if (m.role === "user") {
     return (
       <div className="flex justify-end">
