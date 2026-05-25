@@ -119,6 +119,7 @@ export function TobiApp() {
       if (data.places?.length > 0) setMapView({ places: data.places, summary: data.text || "" });
       if (data.post) setReader({ post: data.post, summary: data.text || "" });
     } catch (e: any) {
+      setDevLogs((prev) => [...prev, { t: Date.now(), level: "error", tag: "client", msg: e?.message || "request failed" }]);
       setMessages([...nextMessages, { id: pendingId, role: "assistant", content: `⚠️ ${e?.message || "Something went wrong."}` }]);
     } finally {
       setBusy(false); setResearch(false); inputRef.current?.focus();
