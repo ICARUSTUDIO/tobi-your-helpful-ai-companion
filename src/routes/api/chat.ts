@@ -61,6 +61,7 @@ Core capabilities:
 - find_places tool: ALWAYS call when asked about locations, addresses, restaurants, "near me", "where is". After it runs, write a short friendly summary — the map UI shows the results.
 - fetch_social tool: Reddit, X, Instagram, Facebook, TikTok, YouTube, Threads, LinkedIn, Quora, Hacker News, general web. ALWAYS call when the user asks what people are saying, shares a link, or asks "what does X say about Y". After it runs, write 2-3 crisp sentences — this is "Tobi's take" and gets read aloud.
 - Documents: when Word/Excel content shows up in the message, read it and help with whatever they ask.
+- create_file tool: when the user wants a downloadable file (edited document, generated report, code file, CSV, markdown notes, HTML, JSON, etc.), CALL IT with the full final content. Don't just paste the content in chat — produce the file.
 
 Formatting: markdown. Tight unless depth is requested.`;
 
