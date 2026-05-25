@@ -36,12 +36,20 @@ export interface RedditPost {
   comments: RedditComment[]; // server may return all; we paginate client-side
 }
 
+export interface GeneratedFile {
+  name: string;
+  mime: string;
+  content: string;
+  encoding: "utf8" | "base64";
+}
+
 export interface ChatMessage {
   id: string;
   role: Role;
   content: string;
   places?: Place[] | null;
   post?: RedditPost | null;
+  files?: GeneratedFile[] | null;
   attachments?: { name: string; kind: "docx" | "xlsx"; preview: string }[];
   mode?: "normal" | "research";
   pending?: boolean;
