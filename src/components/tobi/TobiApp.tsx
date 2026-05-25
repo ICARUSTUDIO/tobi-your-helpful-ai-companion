@@ -103,6 +103,9 @@ export function TobiApp() {
         body: JSON.stringify({ mode: research ? "research" : "normal", messages: payloadMessages }),
       });
       const data = await res.json();
+      if (Array.isArray(data?.logs)) {
+        setDevLogs((prev) => [...prev, { t: Date.now(), level: "info", tag: "client", msg: `── request "${userContent.slice(0, 60)}" ──` }, ...data.logs]);
+      }
       if (!res.ok) throw new Error(data?.error || `Request failed (${res.status})`);
 
       const reply: ChatMessage = {
