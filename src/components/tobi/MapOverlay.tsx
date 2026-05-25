@@ -133,7 +133,9 @@ export function MapOverlay({ places, summary, onClose }: Props) {
           <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-tobi font-semibold">
             <span className="size-2 rounded-full bg-tobi animate-pulse" /> Tobi found {places.length} {places.length === 1 ? "place" : "places"}
           </div>
-          <p className="mt-2 text-sm text-foreground/90 leading-relaxed line-clamp-4">{summary}</p>
+          <div className="prose-tobi mt-2 text-sm text-foreground/90 leading-relaxed max-h-32 overflow-y-auto scrollbar-thin">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{summary}</ReactMarkdown>
+          </div>
         </div>
 
         <div className="pointer-events-auto flex-1 overflow-y-auto scrollbar-thin space-y-2 pr-1">
