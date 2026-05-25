@@ -5,7 +5,7 @@ import { TobiLogo } from "./TobiLogo";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 import type { ChatMessage } from "./types";
 
-function IconBtn({ title, onClick, children }: { title: string; onClick: () => void; children: React.ReactNode }) {
+function IconBtn({ title, onClick, children }: { title: string; onClick: () => void; children: ReactNode }) {
   return (
     <button
       onClick={onClick}
