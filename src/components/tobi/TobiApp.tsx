@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Message } from "./Message";
 import { MapOverlay } from "./MapOverlay";
 import { ReaderDock } from "./ReaderDock";
+import { DevConsole, type DevLog } from "./DevConsole";
 import { parseDocument } from "./parseDoc";
 import type { ChatMessage, Place, RedditPost } from "./types";
 
