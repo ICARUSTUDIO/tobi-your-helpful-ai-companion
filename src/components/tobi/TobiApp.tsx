@@ -277,11 +277,15 @@ export function TobiApp() {
 
   function maybeAskToTrain(): boolean {
     const exchanges = messages.filter((m) => m.role === "user" || m.role === "assistant");
-    if (exchanges.length >= 4 && conversationId) {
-      setTrainPrompt({ convoId: conversationId, messages: exchanges });
-      return true;
-    }
-    return false;
+    if (exchanges.length < 4 || !conversationId) return false;
+    // 3-day cooldown so Tobi doesn't pester
+    try {
+      const last = Number(localStorage.getItem("tobi:lastTrainPromptAt") || 0);
+      if (Date.now() - last < 3 * 24 * 60 * 60 * 1000) return false;
+      localStorage.setItem("tobi:lastTrainPromptAt", String(Date.now()));
+    } catch {}
+    setTrainPrompt({ convoId: conversationId, messages: exchanges });
+    return true;
   }
 
   function resetChatState() {
