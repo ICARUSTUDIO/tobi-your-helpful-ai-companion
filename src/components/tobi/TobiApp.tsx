@@ -292,14 +292,25 @@ export function TobiApp() {
                   Research
                 </button>
               </div>
-              <button
-                onClick={send}
-                disabled={busy || (!input.trim() && pendingDocs.length === 0)}
-                className="inline-flex items-center gap-1.5 rounded-full bg-tobi text-primary-foreground px-4 py-1.5 text-xs font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition"
-              >
-                {busy ? "Thinking…" : "Send"}
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-              </button>
+              {busy ? (
+                <button
+                  onClick={stop}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-foreground text-background px-4 py-1.5 text-xs font-semibold hover:opacity-90 transition"
+                  title="Stop generating"
+                >
+                  Stop
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
+                </button>
+              ) : (
+                <button
+                  onClick={send}
+                  disabled={!input.trim() && pendingDocs.length === 0}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-tobi text-primary-foreground px-4 py-1.5 text-xs font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                >
+                  Send
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                </button>
+              )}
             </div>
           </div>
           <div className="text-[10px] text-muted-foreground text-center mt-2">
