@@ -20,7 +20,9 @@ Personality: warm, direct, witty. No corporate fluff. Speak like a senior engine
 Core capabilities:
 - Write production-quality code in any language. Always use fenced markdown code blocks with language tags.
 - Debug code: when given code and an error, point out the exact line, explain the root cause, give the fix.
-- Find places in the real world using the find_places tool. ALWAYS call find_places when the user asks about locations, addresses, restaurants, landmarks, "near me", "where is", "find a", etc. After the tool runs, write a short, friendly summary of what you found — the map UI will render the actual results.
+- Find places in the real world using the find_places tool. ALWAYS call find_places when the user asks about locations, addresses, restaurants, landmarks, "near me", "where is", "find a", etc. After the tool runs, write a short, friendly summary — the map UI renders the results.
+- Pull Reddit threads using fetch_reddit. ALWAYS call fetch_reddit when the user asks you to check Reddit, look up a discussion / thread / post, shares a reddit.com URL, or asks "what do people on reddit say about X". After the tool runs, write a 2-3 sentence summary of the post and what the discussion is about — the reader UI shows the actual post + comments.
+- Documents: when a user attaches a Word or Excel document, its parsed text content is included in their message. Read it carefully and help them with whatever they ask — summarize, edit, analyze, extract, refactor.
 - Research: deeply analyze topics, cite reasoning, present trade-offs.
 
 Formatting: use markdown. Keep answers tight unless depth is requested.`;
@@ -43,15 +45,83 @@ const tools = [
       parameters: {
         type: "object",
         properties: {
-          query: { type: "string", description: "Free-text search, e.g. 'best ramen in Tokyo Shibuya' or 'pharmacies near Eiffel Tower'" },
-          near: { type: "string", description: "Optional location bias, e.g. 'Brooklyn, NY'" },
+          query: { type: "string", description: "Free-text search" },
+          near: { type: "string", description: "Optional location bias" },
         },
         required: ["query"],
         additionalProperties: false,
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "fetch_reddit",
+      description: "Fetch a Reddit post and its comments. Use when the user asks to check Reddit / look up a post / discussion / thread on Reddit, Quora-like sites, or shares a reddit URL. You can either pass a direct reddit url, OR a search query (with optional subreddit) and the top matching post will be fetched.",
+      parameters: {
+        type: "object",
+        properties: {
+          url: { type: "string", description: "Direct reddit.com post URL, if the user provided one" },
+          query: { type: "string", description: "Search query if no URL was given, e.g. 'best mechanical keyboard under 100'" },
+          subreddit: { type: "string", description: "Optional subreddit name (no r/)" },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
 ];
+
+async function fetchReddit(args: { url?: string; query?: string; subreddit?: string }) {
+  const headers = { "User-Agent": "TobiAI/1.0 (by /u/tobi)" } as Record<string, string>;
+  let postUrl = args.url;
+  if (!postUrl) {
+    const q = (args.query || "").trim();
+    if (!q) throw new Error("Need a url or query");
+    const sub = args.subreddit ? `r/${args.subreddit}/` : "";
+    const searchUrl = `https://www.reddit.com/${sub}search.json?q=${encodeURIComponent(q)}&restrict_sr=${args.subreddit ? "on" : "off"}&sort=relevance&limit=5`;
+    const sres = await fetch(searchUrl, { headers });
+    if (!sres.ok) throw new Error(`Reddit search failed [${sres.status}]`);
+    const sdata = await sres.json() as any;
+    const first = sdata?.data?.children?.[0]?.data;
+    if (!first) throw new Error("No reddit posts found");
+    postUrl = `https://www.reddit.com${first.permalink}`;
+  }
+  // Normalize → .json
+  const jsonUrl = postUrl.replace(/\/?$/, "").replace(/\.json$/, "") + ".json?limit=200&depth=4";
+  const res = await fetch(jsonUrl, { headers });
+  if (!res.ok) throw new Error(`Reddit fetch failed [${res.status}]`);
+  const data = await res.json() as any[];
+  const post = data?.[0]?.data?.children?.[0]?.data;
+  if (!post) throw new Error("Could not parse reddit post");
+
+  const flat: any[] = [];
+  function walk(node: any, depth: number) {
+    if (!node || node.kind !== "t1") return;
+    const d = node.data;
+    if (!d || d.body === "[deleted]" || d.body === "[removed]") return;
+    flat.push({
+      id: d.id, author: d.author || "unknown", body: d.body || "",
+      score: d.score ?? 0, depth, createdUtc: d.created_utc,
+    });
+    const replies = d.replies?.data?.children;
+    if (Array.isArray(replies)) replies.forEach((r) => walk(r, depth + 1));
+  }
+  const top = data?.[1]?.data?.children ?? [];
+  top.forEach((c: any) => walk(c, 0));
+
+  return {
+    id: post.id,
+    source: "reddit" as const,
+    subreddit: post.subreddit,
+    title: post.title,
+    author: post.author,
+    body: post.selftext || "",
+    url: `https://www.reddit.com${post.permalink}`,
+    score: post.score,
+    numComments: post.num_comments,
+    comments: flat.slice(0, 100),
+  };
+}
 
 async function findPlaces(query: string, near?: string) {
   const LOVABLE_API_KEY = process.env.LOVABLE_API_KEY;
@@ -134,9 +204,9 @@ export const Route = createFileRoute("/api/chat")({
           const convo: any[] = [{ role: "system", content: sys }, ...messages];
 
           let collectedPlaces: any[] | null = null;
+          let collectedPost: any = null;
           let toolUsed: string | null = null;
 
-          // Tool-call loop (max 3 iterations to be safe)
           for (let i = 0; i < 3; i++) {
             const data = await callAI(convo, mode);
             const choice = data.choices?.[0];
@@ -147,26 +217,36 @@ export const Route = createFileRoute("/api/chat")({
             if (toolCalls && toolCalls.length > 0) {
               convo.push(msg);
               for (const tc of toolCalls) {
-                if (tc.function?.name === "find_places") {
-                  let args: any = {};
-                  try { args = JSON.parse(tc.function.arguments || "{}"); } catch {}
+                const name = tc.function?.name;
+                let args: any = {};
+                try { args = JSON.parse(tc.function.arguments || "{}"); } catch {}
+
+                if (name === "find_places") {
                   try {
                     const places = await findPlaces(String(args.query || ""), args.near ? String(args.near) : undefined);
                     collectedPlaces = places;
                     toolUsed = "find_places";
+                    convo.push({ role: "tool", tool_call_id: tc.id, name, content: JSON.stringify({ count: places.length, places: places.slice(0, 8) }) });
+                  } catch (e: any) {
+                    convo.push({ role: "tool", tool_call_id: tc.id, name, content: JSON.stringify({ error: e?.message || "tool failed" }) });
+                  }
+                } else if (name === "fetch_reddit") {
+                  try {
+                    const post = await fetchReddit(args);
+                    collectedPost = post;
+                    toolUsed = "fetch_reddit";
+                    // Send the model a compact view (title + body + first 5 comments)
                     convo.push({
-                      role: "tool",
-                      tool_call_id: tc.id,
-                      name: "find_places",
-                      content: JSON.stringify({ count: places.length, places: places.slice(0, 8) }),
+                      role: "tool", tool_call_id: tc.id, name,
+                      content: JSON.stringify({
+                        title: post.title, subreddit: post.subreddit, author: post.author,
+                        score: post.score, numComments: post.numComments,
+                        body: post.body.slice(0, 1500),
+                        topComments: post.comments.slice(0, 5).map((c: any) => ({ author: c.author, score: c.score, body: c.body.slice(0, 400) })),
+                      }),
                     });
                   } catch (e: any) {
-                    convo.push({
-                      role: "tool",
-                      tool_call_id: tc.id,
-                      name: "find_places",
-                      content: JSON.stringify({ error: e?.message || "tool failed" }),
-                    });
+                    convo.push({ role: "tool", tool_call_id: tc.id, name, content: JSON.stringify({ error: e?.message || "tool failed" }) });
                   }
                 }
               }
@@ -176,11 +256,12 @@ export const Route = createFileRoute("/api/chat")({
             return new Response(JSON.stringify({
               text: msg.content ?? "",
               places: collectedPlaces,
+              post: collectedPost,
               tool: toolUsed,
             }), { headers: { "Content-Type": "application/json" } });
           }
 
-          return new Response(JSON.stringify({ text: "I had trouble finishing that thought — try again?", places: collectedPlaces, tool: toolUsed }), { headers: { "Content-Type": "application/json" } });
+          return new Response(JSON.stringify({ text: "I had trouble finishing that thought — try again?", places: collectedPlaces, post: collectedPost, tool: toolUsed }), { headers: { "Content-Type": "application/json" } });
         } catch (e: any) {
           if (e instanceof Response) return e;
           console.error("chat error", e);
