@@ -17,10 +17,29 @@ function useTTS() {
   const [speaking, setSpeaking] = useState(false);
   const [paused, setPaused] = useState(false);
   const [voiceName, setVoiceName] = useState<string>("Natural browser voice");
+  const [intensity, setIntensity] = useState(0); // 0..1, pulses on each spoken word
   const queueRef = useRef<SpeechSynthesisUtterance[]>([]);
   const onDoneRef = useRef<(() => void) | null>(null);
+  const decayRef = useRef<number | null>(null);
 
-  useEffect(() => () => { try { window.speechSynthesis?.cancel(); } catch {} }, []);
+  useEffect(() => () => {
+    try { window.speechSynthesis?.cancel(); } catch {}
+    if (decayRef.current) cancelAnimationFrame(decayRef.current);
+  }, []);
+
+  function startDecay() {
+    if (decayRef.current) cancelAnimationFrame(decayRef.current);
+    const tick = () => {
+      setIntensity((v) => Math.max(0, v - 0.04));
+      decayRef.current = requestAnimationFrame(tick);
+    };
+    decayRef.current = requestAnimationFrame(tick);
+  }
+  function stopDecay() {
+    if (decayRef.current) cancelAnimationFrame(decayRef.current);
+    decayRef.current = null;
+    setIntensity(0);
+  }
 
   function speak(chunks: string[], onDone?: () => void) {
     if (typeof window === "undefined" || !window.speechSynthesis) return;
@@ -35,21 +54,23 @@ function useTTS() {
     chunks.forEach((text, i) => {
       const u = new SpeechSynthesisUtterance(text);
       if (preferredVoice) u.voice = preferredVoice;
-      u.rate = 0.72;
+      u.rate = 0.92;
       u.pitch = 0.96;
       u.volume = 0.92;
+      u.onboundary = () => setIntensity(0.6 + Math.random() * 0.4);
       if (i === chunks.length - 1) {
-        u.onend = () => { setSpeaking(false); setPaused(false); onDoneRef.current?.(); };
+        u.onend = () => { setSpeaking(false); setPaused(false); stopDecay(); onDoneRef.current?.(); };
       }
       queueRef.current.push(u);
       window.speechSynthesis.speak(u);
     });
     setSpeaking(true); setPaused(false);
+    startDecay();
   }
-  function pause() { window.speechSynthesis.pause(); setPaused(true); }
-  function resume() { window.speechSynthesis.resume(); setPaused(false); }
-  function stop() { window.speechSynthesis.cancel(); setSpeaking(false); setPaused(false); }
-  return { speaking, paused, voiceName, speak, pause, resume, stop };
+  function pause() { window.speechSynthesis.pause(); setPaused(true); stopDecay(); }
+  function resume() { window.speechSynthesis.resume(); setPaused(false); startDecay(); }
+  function stop() { window.speechSynthesis.cancel(); setSpeaking(false); setPaused(false); stopDecay(); }
+  return { speaking, paused, voiceName, intensity, speak, pause, resume, stop };
 }
 
 function chunkText(s: string, max = 140): string[] {
@@ -89,12 +110,24 @@ export function ReaderDock({ post, summary, onClose }: Props) {
     setShowTutorial(false);
     localStorage.setItem("tobi-listen-tutorial", "1");
     const take = (summary || "").trim();
-    if (!take) {
-      addNote("_I don't have a take written yet for this one — nothing to read aloud._");
+    if (!take && !post.body && post.comments.length === 0) {
+      addNote("_Nothing here to read aloud yet._");
       return;
     }
-    tts.speak(chunkText(`Tobi's take. ${take}`), () => {
-      if (post.comments.length > 0) setAskComments(true);
+    const parts: string[] = [];
+    if (take) parts.push(`Tobi's take. ${take}`);
+    if (post.title) parts.push(`Now the post itself. ${post.title}.`);
+    if (post.body) parts.push(post.body);
+    if (post.comments.length > 0) {
+      parts.push(`And here are the top ${Math.min(PAGE, post.comments.length)} comments.`);
+      post.comments.slice(0, PAGE).forEach((c, i) => {
+        parts.push(`Comment ${i + 1}. ${c.author} said: ${c.body}`);
+      });
+      setShown(Math.max(shown, PAGE));
+    }
+    const allChunks = parts.flatMap((p) => chunkText(p));
+    tts.speak(allChunks, () => {
+      if (post.comments.length > PAGE) setAskMore(true);
     });
   }
 
@@ -150,15 +183,26 @@ export function ReaderDock({ post, summary, onClose }: Props) {
 
   // Docked = floating pill in top-right
   if (mode === "docked") {
+    const i = tts.intensity;
+    const glow = tts.speaking
+      ? {
+          borderColor: `rgba(34, 197, 94, ${0.5 + i * 0.5})`,
+          boxShadow: `0 0 ${8 + i * 24}px ${1 + i * 3}px rgba(34, 197, 94, ${0.25 + i * 0.55})`,
+        }
+      : undefined;
     return (
       <div className="fixed top-4 right-4 z-40 max-w-[320px]">
         <button
           onClick={() => setMode("expanded")}
-          className="flex items-center gap-2 rounded-full bg-card/95 backdrop-blur-xl border border-tobi/40 pl-3 pr-4 py-2 shadow-2xl glow-ring hover:bg-card transition group"
+          style={glow}
+          className={`flex items-center gap-2 rounded-full bg-card/95 backdrop-blur-xl border pl-3 pr-4 py-2 shadow-2xl hover:bg-card transition-[background,transform] group ${tts.speaking ? "" : "border-tobi/40 glow-ring"}`}
         >
-          <span className={`size-2 rounded-full ${tts.speaking ? "bg-tobi animate-pulse" : "bg-muted-foreground"}`} />
+          <span
+            className={`size-2 rounded-full ${tts.speaking ? "bg-green-400" : "bg-muted-foreground"}`}
+            style={tts.speaking ? { transform: `scale(${1 + i * 0.8})`, transition: "transform 80ms linear" } : undefined}
+          />
           <div className="text-left min-w-0">
-            <div className="text-[10px] uppercase tracking-wider text-tobi font-semibold">Thinking cap</div>
+            <div className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: tts.speaking ? "rgb(34, 197, 94)" : undefined }}>Thinking cap</div>
             <div className="text-xs text-foreground truncate max-w-[220px]">{post.title}</div>
           </div>
         </button>

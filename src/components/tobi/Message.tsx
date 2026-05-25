@@ -53,7 +53,7 @@ export function Message({
           )}
         </div>
         {(onRetry || onEdit || onDeepDive) && (
-          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition">
+          <div className="flex items-center gap-0.5 opacity-70 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition">
             {onEdit && (
               <IconBtn title="Edit prompt" onClick={onEdit}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
