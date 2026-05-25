@@ -225,14 +225,24 @@ export function TobiApp() {
               </div>
             </div>
           ) : (
-            messages.map((m) => (
-              <Message
-                key={m.id}
-                m={m}
-                onShowMap={m.places ? () => setMapView({ places: m.places!, summary: m.content }) : undefined}
-                onShowReader={m.post ? () => setReader({ post: m.post!, summary: m.content }) : undefined}
-              />
-            ))
+            messages.map((m, i) => {
+              const isLastUser = m.role === "user" && i === messages.length - 1 && !busy;
+              const isPriorUser = m.role === "user" && i < messages.length - 1 && messages[i + 1]?.role === "assistant" && !messages[i + 1]?.pending;
+              const canAct = (isLastUser || isPriorUser) && !busy;
+              return (
+                <Message
+                  key={m.id}
+                  m={m}
+                  pendingPromptText={m.pending ? pendingPrompt?.text : undefined}
+                  pendingPromptMode={m.pending ? pendingPrompt?.mode : undefined}
+                  onShowMap={m.places ? () => setMapView({ places: m.places!, summary: m.content }) : undefined}
+                  onShowReader={m.post ? () => setReader({ post: m.post!, summary: m.content }) : undefined}
+                  onRetry={canAct ? () => retry(m.id, m.mode === "research" ? "research" : "normal") : undefined}
+                  onEdit={canAct ? () => editMessage(m.id) : undefined}
+                  onDeepDive={canAct ? () => retry(m.id, "research") : undefined}
+                />
+              );
+            })
           )}
         </div>
       </main>
