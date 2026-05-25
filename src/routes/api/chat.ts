@@ -15,6 +15,8 @@ const BodySchema = z.object({
   user: z.object({
     name: z.string().max(60).nullish(),
     age: z.number().int().min(5).max(120).nullish(),
+    birthday: z.string().nullish(),
+    isBirthday: z.boolean().optional(),
     facts: z.array(z.string().max(200)).max(20).optional(),
   }).optional(),
 });
@@ -557,10 +559,12 @@ export const Route = createFileRoute("/api/chat")({
           log.info("chat", `mode=${mode} messages=${messages.length} user=${user?.name ?? "anon"}`);
 
           let personal = "";
-          if (user?.name || user?.age || user?.facts?.length) {
+          if (user?.name || user?.age || user?.facts?.length || user?.birthday) {
             personal = `\n\nABOUT THIS USER (use naturally, never recite as a list):\n` +
               (user.name ? `- Name: ${user.name}\n` : "") +
               (user.age ? `- Age: ${user.age}\n` : "") +
+              (user.birthday ? `- Birthday: ${user.birthday}\n` : "") +
+              (user.isBirthday ? `- 🎂 IT IS THEIR BIRTHDAY TODAY. Open your very first reply in this conversation with a warm, genuine happy birthday — make it feel personal, not a stock phrase. After that, don't keep bringing it up unless they do.\n` : "") +
               (user.facts?.length ? `- Things they've told you before:\n${user.facts.map((f) => `  • ${f}`).join("\n")}\n` : "");
           }
           const sys = SYSTEM_PROMPT + personal + (mode === "research" ? RESEARCH_PROMPT : "");
