@@ -12,6 +12,11 @@ const MessageSchema = z.object({
 const BodySchema = z.object({
   messages: z.array(MessageSchema).min(1).max(60),
   mode: z.enum(["normal", "research"]).default("normal"),
+  user: z.object({
+    name: z.string().max(60).nullish(),
+    age: z.number().int().min(5).max(120).nullish(),
+    facts: z.array(z.string().max(200)).max(20).optional(),
+  }).optional(),
 });
 
 const SYSTEM_PROMPT = `You are Tobi — a sharp, warm, slightly mischievous AI bro who happens to also be brilliant.
