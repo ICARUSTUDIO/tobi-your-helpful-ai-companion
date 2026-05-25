@@ -176,7 +176,7 @@ export function TobiApp() {
     if (idx < 0) return;
     const original = messages[idx];
     if (original.role !== "user") return;
-    setMessages(messages.slice(0, idx));
+    // Keep existing conversation intact; just load the prompt into the input for editing.
     setInput(original.content);
     setTimeout(() => {
       const el = inputRef.current;
