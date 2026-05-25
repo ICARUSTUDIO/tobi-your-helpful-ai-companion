@@ -1,4 +1,4 @@
-import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, redirect, useNavigate, Link } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable";
@@ -87,6 +87,11 @@ function LoginPage() {
         <button onClick={() => setMode(mode === "signin" ? "signup" : "signin")} className="mt-4 w-full text-xs text-muted-foreground hover:text-foreground">
           {mode === "signin" ? "New here? Create an account" : "Already have an account? Sign in"}
         </button>
+        <div className="mt-5 flex items-center justify-center gap-2 text-[10px] text-muted-foreground">
+          <Link to="/terms" className="hover:text-foreground underline underline-offset-2">Terms of Service</Link>
+          <span>&middot;</span>
+          <Link to="/privacy" className="hover:text-foreground underline underline-offset-2">Privacy Policy</Link>
+        </div>
       </div>
     </div>
   );
