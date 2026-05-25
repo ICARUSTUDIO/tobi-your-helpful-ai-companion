@@ -32,6 +32,7 @@ export interface RedditPost {
   url: string;
   score?: number;
   numComments?: number;
+  related?: { title: string; url: string; subreddit?: string; score?: number; numComments?: number }[];
   comments: RedditComment[]; // server may return all; we paginate client-side
 }
 

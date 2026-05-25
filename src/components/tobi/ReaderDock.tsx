@@ -246,6 +246,20 @@ export function ReaderDock({ post, summary, onClose }: Props) {
             )}
           </div>
 
+          {post.related && post.related.length > 1 && (
+            <div className="border-t border-border pt-3">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Matched Reddit links</div>
+              <div className="space-y-2">
+                {post.related.slice(0, 6).map((hit) => (
+                  <a key={hit.url} href={hit.url} target="_blank" rel="noreferrer" className="block rounded-xl border border-border bg-background/40 p-3 hover:border-tobi/40 transition">
+                    <div className="text-xs font-medium text-foreground leading-snug">{hit.title}</div>
+                    <div className="mt-1 text-[10px] text-muted-foreground">r/{hit.subreddit || "reddit"} · {hit.numComments ?? 0} comments · {hit.score ?? 0} pts</div>
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="border-t border-border pt-3">
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
               Comments · showing {Math.min(shown, totalComments)} of {totalComments}
