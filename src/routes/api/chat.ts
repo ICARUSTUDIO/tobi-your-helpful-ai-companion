@@ -377,11 +377,16 @@ async function fetchReddit(args: { url?: string; query?: string; subreddit?: str
     try {
       const markdown = await jinaMarkdown(postUrl, log);
       const meta = extractRedditMeta(markdown, postUrl);
-      body = body || meta.content.slice(0, 8000);
-      if (comments.length === 0) {
-        comments = meta.content.split(/\n\n+/).map((p) => p.trim()).filter((p) => p.length > 60).slice(0, 30).map((p, i) => ({
-          id: `j${i}`, author: "redditor", body: p, score: 0, depth: 0, createdUtc: 0,
-        }));
+      if (looksBlocked(meta.content)) {
+        log.warn("reddit.jina", "fallback hit Reddit login/block wall — discarding");
+      } else {
+        body = body || meta.content.slice(0, 8000);
+        if (comments.length === 0) {
+          comments = meta.content.split(/\n\n+/).map((p) => p.trim())
+            .filter((p) => p.length > 60 && !looksBlocked(p))
+            .slice(0, 30)
+            .map((p, i) => ({ id: `j${i}`, author: "redditor", body: p, score: 0, depth: 0, createdUtc: 0 }));
+        }
       }
     } catch (e: any) {
       log.warn("reddit.jina", `fallback failed: ${e?.message}`);
