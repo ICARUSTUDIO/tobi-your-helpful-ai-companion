@@ -4,6 +4,7 @@ import { MapOverlay } from "./MapOverlay";
 import { ReaderDock } from "./ReaderDock";
 import { DevConsole, type DevLog } from "./DevConsole";
 import { parseDocument } from "./parseDoc";
+import { TobiLogo } from "./TobiLogo";
 import type { ChatMessage, Place, RedditPost } from "./types";
 
 const SUGGESTIONS = [
@@ -137,7 +138,7 @@ export function TobiApp() {
 
       <header className="relative z-10 flex items-center justify-between px-6 py-4 border-b border-border/60 backdrop-blur-sm">
         <div className="flex items-center gap-3">
-          <div className="size-9 rounded-xl tobi-orb grid place-items-center text-sm font-bold text-background">T</div>
+          <TobiLogo className="size-9 rounded-xl" markClassName="size-7" />
           <div>
             <div className="font-display text-lg font-semibold tracking-tight">Tobi</div>
             <div className="text-[11px] text-muted-foreground -mt-0.5">your interactive AI</div>
@@ -152,7 +153,7 @@ export function TobiApp() {
         <div className="max-w-3xl mx-auto px-6 py-8 space-y-6">
           {messages.length === 0 ? (
             <div className="pt-12 text-center space-y-6">
-              <div className="mx-auto size-20 rounded-3xl tobi-orb grid place-items-center text-3xl font-bold text-background">T</div>
+              <TobiLogo className="mx-auto size-20 rounded-3xl" markClassName="size-14" />
               <div>
                 <h1 className="font-display text-3xl font-semibold tracking-tight">Hey, I'm Tobi.</h1>
                 <p className="mt-2 text-muted-foreground text-sm max-w-md mx-auto">
