@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
+import { createClient } from "@supabase/supabase-js";
 
 const MessageSchema = z.object({
   role: z.enum(["user", "assistant", "system", "tool"]),
