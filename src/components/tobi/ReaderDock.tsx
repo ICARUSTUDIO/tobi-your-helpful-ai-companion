@@ -110,12 +110,24 @@ export function ReaderDock({ post, summary, onClose }: Props) {
     setShowTutorial(false);
     localStorage.setItem("tobi-listen-tutorial", "1");
     const take = (summary || "").trim();
-    if (!take) {
-      addNote("_I don't have a take written yet for this one — nothing to read aloud._");
+    if (!take && !post.body && post.comments.length === 0) {
+      addNote("_Nothing here to read aloud yet._");
       return;
     }
-    tts.speak(chunkText(`Tobi's take. ${take}`), () => {
-      if (post.comments.length > 0) setAskComments(true);
+    const parts: string[] = [];
+    if (take) parts.push(`Tobi's take. ${take}`);
+    if (post.title) parts.push(`Now the post itself. ${post.title}.`);
+    if (post.body) parts.push(post.body);
+    if (post.comments.length > 0) {
+      parts.push(`And here are the top ${Math.min(PAGE, post.comments.length)} comments.`);
+      post.comments.slice(0, PAGE).forEach((c, i) => {
+        parts.push(`Comment ${i + 1}. ${c.author} said: ${c.body}`);
+      });
+      setShown(Math.max(shown, PAGE));
+    }
+    const allChunks = parts.flatMap((p) => chunkText(p));
+    tts.speak(allChunks, () => {
+      if (post.comments.length > PAGE) setAskMore(true);
     });
   }
 
