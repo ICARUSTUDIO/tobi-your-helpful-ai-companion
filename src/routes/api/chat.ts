@@ -528,43 +528,39 @@ async function fetchSocial(args: { url?: string; query?: string; platform?: stri
 }
 
 async function findPlaces(query: string, near: string | undefined, log: ReturnType<typeof makeLogger>) {
-  const LOVABLE_API_KEY = process.env.LOVABLE_API_KEY;
-  const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
-  if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY missing");
-  if (!GOOGLE_MAPS_API_KEY) throw new Error("GOOGLE_MAPS_API_KEY missing");
-
-  const textQuery = near ? `${query} near ${near}` : query;
-  log.info("places.search", textQuery);
-  const res = await fetch("https://connector-gateway.lovable.dev/google_maps/places/v1/places:searchText", {
-    method: "POST",
+  const q = near ? `${query} ${near}` : query;
+  log.info("places.search", q);
+  // Free OpenStreetMap Nominatim — no API key required.
+  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&extratags=1&limit=8&q=${encodeURIComponent(q)}`;
+  const res = await fetch(url, {
     headers: {
-      Authorization: `Bearer ${LOVABLE_API_KEY}`,
-      "X-Connection-Api-Key": GOOGLE_MAPS_API_KEY,
-      "Content-Type": "application/json",
-      "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.websiteUri,places.googleMapsUri,places.primaryTypeDisplayName",
+      "User-Agent": "TobiApp/1.0 (https://t-obi.xyz)",
+      "Accept-Language": "en",
     },
-    body: JSON.stringify({ textQuery, pageSize: 8 }),
   });
   if (!res.ok) {
     const t = await res.text();
-    throw new Error(`Places API failed [${res.status}]: ${t}`);
+    throw new Error(`Nominatim failed [${res.status}]: ${t}`);
   }
-  const data = await res.json() as { places?: any[] };
-  const places = (data.places ?? []).map((p) => ({
-    id: p.id,
-    name: p.displayName?.text ?? "Unknown",
-    address: p.formattedAddress ?? "",
-    lat: p.location?.latitude,
-    lng: p.location?.longitude,
-    rating: p.rating,
-    ratingCount: p.userRatingCount,
-    type: p.primaryTypeDisplayName?.text,
-    website: p.websiteUri,
-    mapsUrl: p.googleMapsUri,
-  })).filter((p) => typeof p.lat === "number" && typeof p.lng === "number");
+  const data = (await res.json()) as any[];
+  const places = data
+    .map((p) => ({
+      id: String(p.place_id),
+      name: p.namedetails?.name || p.display_name?.split(",")[0] || "Unknown",
+      address: p.display_name ?? "",
+      lat: parseFloat(p.lat),
+      lng: parseFloat(p.lon),
+      rating: undefined as number | undefined,
+      ratingCount: undefined as number | undefined,
+      type: p.type ? String(p.type).replace(/_/g, " ") : undefined,
+      website: p.extratags?.website || p.extratags?.url,
+      mapsUrl: `https://www.openstreetmap.org/?mlat=${p.lat}&mlon=${p.lon}#map=18/${p.lat}/${p.lon}`,
+    }))
+    .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
   log.info("places.search", `→ ${places.length} results`);
   return places;
 }
+
 
 async function callAI(messages: any[], mode: "normal" | "research", log: ReturnType<typeof makeLogger>) {
   const LOVABLE_API_KEY = process.env.LOVABLE_API_KEY;
