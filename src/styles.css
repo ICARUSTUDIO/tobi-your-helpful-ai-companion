@@ -110,6 +110,14 @@
     box-shadow: var(--shadow-glow);
     color: var(--primary-foreground);
   }
+  .bg-grid-soft {
+    background-image: radial-gradient(color-mix(in oklab, var(--foreground) 10%, transparent) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+    background: var(--gradient-tobi);
+    box-shadow: var(--shadow-glow);
+    color: var(--primary-foreground);
+  }
   .tobi-logo-ring { fill: color-mix(in oklab, var(--background) 16%, transparent); stroke: color-mix(in oklab, var(--tobi-glow) 78%, var(--foreground)); stroke-width: 2.5; }
   .tobi-logo-spark { fill: var(--primary-foreground); opacity: 0.95; }
   .tobi-logo-face { fill: var(--primary-foreground); }
