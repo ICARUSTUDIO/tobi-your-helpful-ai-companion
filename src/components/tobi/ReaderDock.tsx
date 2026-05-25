@@ -88,9 +88,13 @@ export function ReaderDock({ post, summary, onClose }: Props) {
   function startListening() {
     setShowTutorial(false);
     localStorage.setItem("tobi-listen-tutorial", "1");
-    const postText = `${post.title}. Posted by ${post.author}. ${post.body || "No body, this is a link post."}`;
-    tts.speak(chunkText(postText), () => {
-      setAskComments(true);
+    const take = (summary || "").trim();
+    if (!take) {
+      addNote("_I don't have a take written yet for this one — nothing to read aloud._");
+      return;
+    }
+    tts.speak(chunkText(`Tobi's take. ${take}`), () => {
+      if (post.comments.length > 0) setAskComments(true);
     });
   }
 
