@@ -183,15 +183,26 @@ export function ReaderDock({ post, summary, onClose }: Props) {
 
   // Docked = floating pill in top-right
   if (mode === "docked") {
+    const i = tts.intensity;
+    const glow = tts.speaking
+      ? {
+          borderColor: `rgba(34, 197, 94, ${0.5 + i * 0.5})`,
+          boxShadow: `0 0 ${8 + i * 24}px ${1 + i * 3}px rgba(34, 197, 94, ${0.25 + i * 0.55})`,
+        }
+      : undefined;
     return (
       <div className="fixed top-4 right-4 z-40 max-w-[320px]">
         <button
           onClick={() => setMode("expanded")}
-          className="flex items-center gap-2 rounded-full bg-card/95 backdrop-blur-xl border border-tobi/40 pl-3 pr-4 py-2 shadow-2xl glow-ring hover:bg-card transition group"
+          style={glow}
+          className={`flex items-center gap-2 rounded-full bg-card/95 backdrop-blur-xl border pl-3 pr-4 py-2 shadow-2xl hover:bg-card transition-[background,transform] group ${tts.speaking ? "" : "border-tobi/40 glow-ring"}`}
         >
-          <span className={`size-2 rounded-full ${tts.speaking ? "bg-tobi animate-pulse" : "bg-muted-foreground"}`} />
+          <span
+            className={`size-2 rounded-full ${tts.speaking ? "bg-green-400" : "bg-muted-foreground"}`}
+            style={tts.speaking ? { transform: `scale(${1 + i * 0.8})`, transition: "transform 80ms linear" } : undefined}
+          />
           <div className="text-left min-w-0">
-            <div className="text-[10px] uppercase tracking-wider text-tobi font-semibold">Thinking cap</div>
+            <div className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: tts.speaking ? "rgb(34, 197, 94)" : undefined }}>Thinking cap</div>
             <div className="text-xs text-foreground truncate max-w-[220px]">{post.title}</div>
           </div>
         </button>
