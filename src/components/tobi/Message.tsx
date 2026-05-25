@@ -109,6 +109,28 @@ export function Message({
             Open reader: "{m.post.title.slice(0, 50)}{m.post.title.length > 50 ? "…" : ""}" →
           </button>
         )}
+        {m.files && m.files.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {m.files.map((f, i) => {
+              const href = (() => {
+                if (f.encoding === "base64") return `data:${f.mime};base64,${f.content}`;
+                const blob = new Blob([f.content], { type: f.mime });
+                return URL.createObjectURL(blob);
+              })();
+              return (
+                <a
+                  key={i}
+                  href={href}
+                  download={f.name}
+                  className="inline-flex items-center gap-2 rounded-xl bg-card border border-tobi/40 px-3 py-2 text-xs font-medium text-tobi hover:bg-tobi/10 transition glow-ring"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  Download {f.name}
+                </a>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

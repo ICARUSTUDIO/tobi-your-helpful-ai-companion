@@ -61,6 +61,7 @@ Core capabilities:
 - find_places tool: ALWAYS call when asked about locations, addresses, restaurants, "near me", "where is". After it runs, write a short friendly summary — the map UI shows the results.
 - fetch_social tool: Reddit, X, Instagram, Facebook, TikTok, YouTube, Threads, LinkedIn, Quora, Hacker News, general web. ALWAYS call when the user asks what people are saying, shares a link, or asks "what does X say about Y". After it runs, write 2-3 crisp sentences — this is "Tobi's take" and gets read aloud.
 - Documents: when Word/Excel content shows up in the message, read it and help with whatever they ask.
+- create_file tool: when the user wants a downloadable file (edited document, generated report, code file, CSV, markdown notes, HTML, JSON, etc.), CALL IT with the full final content. Don't just paste the content in chat — produce the file.
 
 Formatting: markdown. Tight unless depth is requested.`;
 
@@ -111,7 +112,42 @@ const tools = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "create_file",
+      description: "Produce a downloadable file for the user. Use whenever the user asks to download, export, save as a file, edit an attached document and give it back, or generate any kind of file (resume, report, code file, spreadsheet, markdown notes, HTML page, JSON, CSV, .txt, .py, .js, .ts, .html, .md, .csv, .json, .xml, .yaml, .sql, etc.). Put the FULL final file contents in `content`. For binary formats, base64-encode and set encoding='base64'. After calling, write a short friendly note — the UI shows the download button.",
+      parameters: {
+        type: "object",
+        properties: {
+          filename: { type: "string", description: "Filename with extension, e.g. 'resume.md', 'report.csv', 'app.py'" },
+          mime_type: { type: "string", description: "MIME type, e.g. 'text/markdown', 'text/csv', 'application/json', 'text/plain', 'text/html'" },
+          content: { type: "string", description: "Full file contents. Text by default; base64 string if encoding='base64'." },
+          encoding: { type: "string", enum: ["utf8", "base64"], description: "Defaults to utf8." },
+        },
+        required: ["filename", "mime_type", "content"],
+        additionalProperties: false,
+      },
+    },
+  },
 ];
+
+// Reddit's anti-bot / login wall leaks into scraped fallbacks. Detect & strip.
+const REDDIT_BLOCK_MARKERS = [
+  "log in to your reddit account",
+  "use your developer token",
+  "you've been blocked",
+  "if you think you've been blocked",
+  "file a ticket",
+  "log infile a ticket",
+  "are you a human",
+  "press and hold",
+  "verify you are a human",
+];
+function looksBlocked(text: string) {
+  const t = text.toLowerCase();
+  return REDDIT_BLOCK_MARKERS.some((m) => t.includes(m));
+}
 
 // ---- Dev log buffer (per-request) ----
 type LogEntry = { t: number; level: "info" | "warn" | "error"; tag: string; msg: string; data?: any };
@@ -342,11 +378,16 @@ async function fetchReddit(args: { url?: string; query?: string; subreddit?: str
     try {
       const markdown = await jinaMarkdown(postUrl, log);
       const meta = extractRedditMeta(markdown, postUrl);
-      body = body || meta.content.slice(0, 8000);
-      if (comments.length === 0) {
-        comments = meta.content.split(/\n\n+/).map((p) => p.trim()).filter((p) => p.length > 60).slice(0, 30).map((p, i) => ({
-          id: `j${i}`, author: "redditor", body: p, score: 0, depth: 0, createdUtc: 0,
-        }));
+      if (looksBlocked(meta.content)) {
+        log.warn("reddit.jina", "fallback hit Reddit login/block wall — discarding");
+      } else {
+        body = body || meta.content.slice(0, 8000);
+        if (comments.length === 0) {
+          comments = meta.content.split(/\n\n+/).map((p) => p.trim())
+            .filter((p) => p.length > 60 && !looksBlocked(p))
+            .slice(0, 30)
+            .map((p, i) => ({ id: `j${i}`, author: "redditor", body: p, score: 0, depth: 0, createdUtc: 0 }));
+        }
       }
     } catch (e: any) {
       log.warn("reddit.jina", `fallback failed: ${e?.message}`);
@@ -453,13 +494,17 @@ async function fetchSocial(args: { url?: string; query?: string; platform?: stri
     const contentStart = md.indexOf("Markdown Content:");
     const content = (contentStart >= 0 ? md.slice(contentStart + 17) : md).trim();
     body = content.slice(0, 8000);
-    // Heuristic: split into chunks as "comments" so the reader has scrollable replies
-    comments = content
-      .split(/\n\n+/)
-      .map((p) => p.trim())
-      .filter((p) => p.length > 60 && !/^!\[/.test(p))
-      .slice(0, 30)
-      .map((p, i) => ({ id: `s${i}`, author: platform === "x" ? "user" : "reply", body: p, score: 0, depth: 0, createdUtc: 0 }));
+    if (looksBlocked(content)) {
+      log.warn("social.jina", "page looks like a login/block wall — skipping comments");
+      comments = [];
+    } else {
+      comments = content
+        .split(/\n\n+/)
+        .map((p) => p.trim())
+        .filter((p) => p.length > 60 && !/^!\[/.test(p) && !looksBlocked(p))
+        .slice(0, 30)
+        .map((p, i) => ({ id: `s${i}`, author: platform === "x" ? "user" : "reply", body: p, score: 0, depth: 0, createdUtc: 0 }));
+    }
   } catch (e: any) {
     log.warn("social.jina", `scrape failed: ${e?.message}`);
     if (!body) body = `Couldn't scrape the page directly. Open it on ${platform}:\n\n${targetUrl}`;
@@ -575,6 +620,7 @@ export const Route = createFileRoute("/api/chat")({
 
           let collectedPlaces: any[] | null = null;
           let collectedPost: any = null;
+          let collectedFiles: { name: string; mime: string; content: string; encoding: "utf8" | "base64" }[] = [];
           let toolUsed: string | null = null;
 
           for (let i = 0; i < 3; i++) {
@@ -620,6 +666,21 @@ export const Route = createFileRoute("/api/chat")({
                     log.error("tool.error", `fetch_social: ${e?.message}`);
                     convo.push({ role: "tool", tool_call_id: tc.id, name, content: JSON.stringify({ error: e?.message || "tool failed", hint: "Tell the user honestly that the platform couldn't be reached." }) });
                   }
+                } else if (name === "create_file") {
+                  const filename = String(args.filename || "file.txt").replace(/[\\/]/g, "_").slice(0, 120);
+                  const mime = String(args.mime_type || "text/plain").slice(0, 120);
+                  const encoding = args.encoding === "base64" ? "base64" : "utf8";
+                  const content = String(args.content ?? "");
+                  if (!content) {
+                    convo.push({ role: "tool", tool_call_id: tc.id, name, content: JSON.stringify({ error: "Empty content; nothing to save." }) });
+                  } else if (content.length > 2_000_000) {
+                    convo.push({ role: "tool", tool_call_id: tc.id, name, content: JSON.stringify({ error: "File too large (>2MB)." }) });
+                  } else {
+                    collectedFiles.push({ name: filename, mime, content, encoding });
+                    toolUsed = toolUsed || "create_file";
+                    log.info("tool.call", `create_file → ${filename} (${mime}, ${content.length} chars)`);
+                    convo.push({ role: "tool", tool_call_id: tc.id, name, content: JSON.stringify({ ok: true, filename, mime_type: mime, bytes: content.length }) });
+                  }
                 }
               }
               continue;
@@ -629,12 +690,13 @@ export const Route = createFileRoute("/api/chat")({
               text: msg.content ?? "",
               places: collectedPlaces,
               post: collectedPost,
+              files: collectedFiles.length ? collectedFiles : null,
               tool: toolUsed,
               logs: log.entries,
             }), { headers: { "Content-Type": "application/json" } });
           }
 
-          return new Response(JSON.stringify({ text: "I had trouble finishing that thought — try again?", places: collectedPlaces, post: collectedPost, tool: toolUsed, logs: log.entries }), { headers: { "Content-Type": "application/json" } });
+          return new Response(JSON.stringify({ text: "I had trouble finishing that thought — try again?", places: collectedPlaces, post: collectedPost, files: collectedFiles.length ? collectedFiles : null, tool: toolUsed, logs: log.entries }), { headers: { "Content-Type": "application/json" } });
         } catch (e: any) {
           if (e instanceof Response) {
             // attach logs to the body

@@ -185,6 +185,7 @@ export function TobiApp() {
         content: data.text || "",
         places: data.places ?? null,
         post: data.post ?? null,
+        files: data.files ?? null,
         mode,
       };
       setMessages([...nextMessages, reply]);
