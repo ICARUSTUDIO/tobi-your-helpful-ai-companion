@@ -76,22 +76,24 @@ export function TobiApp() {
   }
 
   async function send() {
-    const text = input.trim();
-    if ((!text && pendingDocs.length === 0) || busy) return;
-
-    const userContent = text || "(see attached document)";
-    const docs = pendingDocs;
-    const userMsg: ChatMessage = {
-      id: uid(), role: "user", content: userContent,
-      attachments: docs.map((d) => ({ name: d.name, kind: d.kind, preview: d.preview })),
-    };
+  async function runChat(opts: {
+    baseMessages: ChatMessage[];
+    userMsg: ChatMessage;
+    docs: { name: string; kind: "docx" | "xlsx"; text: string; preview: string }[];
+    mode: "normal" | "research";
+    originalInputText: string;
+  }) {
+    const { baseMessages, userMsg, docs, mode, originalInputText } = opts;
     const pendingId = uid();
-    const pending: ChatMessage = { id: pendingId, role: "assistant", content: "", pending: true, mode: research ? "research" : "normal" };
-    const nextMessages = [...messages, userMsg];
+    const pending: ChatMessage = { id: pendingId, role: "assistant", content: "", pending: true, mode };
+    const nextMessages = [...baseMessages, userMsg];
     setMessages([...nextMessages, pending]);
-    setInput(""); setPendingDocs([]); setBusy(true);
+    setBusy(true);
+    setPendingPrompt({ text: userMsg.content, mode });
 
-    // Build payload — inject doc content into the user message sent to the model
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     const payloadMessages = nextMessages.map((m) => {
       if (m.id === userMsg.id && docs.length > 0) {
         const docBlocks = docs.map((d) => `\n\n--- Attached ${d.kind.toUpperCase()}: ${d.name} ---\n${d.text}\n--- end ${d.name} ---`).join("");
@@ -104,11 +106,12 @@ export function TobiApp() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: research ? "research" : "normal", messages: payloadMessages }),
+        body: JSON.stringify({ mode, messages: payloadMessages }),
+        signal: controller.signal,
       });
       const data = await res.json();
       if (Array.isArray(data?.logs)) {
-        setDevLogs((prev) => [...prev, { t: Date.now(), level: "info", tag: "client", msg: `── request "${userContent.slice(0, 60)}" ──` }, ...data.logs]);
+        setDevLogs((prev) => [...prev, { t: Date.now(), level: "info", tag: "client", msg: `── request "${userMsg.content.slice(0, 60)}" ──` }, ...data.logs]);
       }
       if (!res.ok) throw new Error(data?.error || `Request failed (${res.status})`);
 
@@ -117,17 +120,70 @@ export function TobiApp() {
         content: data.text || "",
         places: data.places ?? null,
         post: data.post ?? null,
-        mode: research ? "research" : "normal",
+        mode,
       };
       setMessages([...nextMessages, reply]);
       if (data.places?.length > 0) setMapView({ places: data.places, summary: data.text || "" });
       if (data.post) setReader({ post: data.post, summary: data.text || "" });
     } catch (e: any) {
-      setDevLogs((prev) => [...prev, { t: Date.now(), level: "error", tag: "client", msg: e?.message || "request failed" }]);
-      setMessages([...nextMessages, { id: pendingId, role: "assistant", content: `⚠️ ${e?.message || "Something went wrong."}` }]);
+      if (e?.name === "AbortError") {
+        setDevLogs((prev) => [...prev, { t: Date.now(), level: "warn", tag: "client", msg: "stopped by user" }]);
+        setMessages(baseMessages);
+        if (originalInputText) setInput(originalInputText);
+        if (docs.length) setPendingDocs(docs);
+        setTimeout(() => inputRef.current?.focus(), 0);
+      } else {
+        setDevLogs((prev) => [...prev, { t: Date.now(), level: "error", tag: "client", msg: e?.message || "request failed" }]);
+        setMessages([...nextMessages, { id: pendingId, role: "assistant", content: `⚠️ ${e?.message || "Something went wrong."}` }]);
+      }
     } finally {
-      setBusy(false); setResearch(false); inputRef.current?.focus();
+      setBusy(false); setResearch(false); setPendingPrompt(null); abortRef.current = null;
+      inputRef.current?.focus();
     }
+  }
+
+  async function send() {
+    const text = input.trim();
+    if ((!text && pendingDocs.length === 0) || busy) return;
+    const userContent = text || "(see attached document)";
+    const docs = pendingDocs;
+    const originalInputText = input;
+    const userMsg: ChatMessage = {
+      id: uid(), role: "user", content: userContent,
+      attachments: docs.map((d) => ({ name: d.name, kind: d.kind, preview: d.preview })),
+    };
+    setInput(""); setPendingDocs([]);
+    await runChat({ baseMessages: messages, userMsg, docs, mode: research ? "research" : "normal", originalInputText });
+  }
+
+  function stop() {
+    abortRef.current?.abort();
+  }
+
+  function retry(messageId: string, mode: "normal" | "research") {
+    if (busy) return;
+    const idx = messages.findIndex((m) => m.id === messageId);
+    if (idx < 0) return;
+    const original = messages[idx];
+    if (original.role !== "user") return;
+    const baseMessages = messages.slice(0, idx);
+    const userMsg: ChatMessage = { ...original, id: uid() };
+    runChat({ baseMessages, userMsg, docs: [], mode, originalInputText: "" });
+  }
+
+  function editMessage(messageId: string) {
+    if (busy) return;
+    const idx = messages.findIndex((m) => m.id === messageId);
+    if (idx < 0) return;
+    const original = messages[idx];
+    if (original.role !== "user") return;
+    setMessages(messages.slice(0, idx));
+    setInput(original.content);
+    setTimeout(() => {
+      const el = inputRef.current;
+      el?.focus();
+      if (el) el.setSelectionRange(el.value.length, el.value.length);
+    }, 0);
   }
 
   function onKey(e: React.KeyboardEvent<HTMLTextAreaElement>) {
