@@ -8,6 +8,15 @@ export function Message({ m, onShowMap, onShowReader }: { m: ChatMessage; onShow
       <div className="flex justify-end">
         <div className="max-w-[80%] rounded-2xl rounded-br-sm bg-tobi/15 border border-tobi/30 px-4 py-2.5 text-sm text-foreground">
           {m.content}
+          {m.attachments && m.attachments.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {m.attachments.map((a, i) => (
+                <span key={i} className="inline-flex items-center gap-1 rounded-md bg-background/40 border border-border px-2 py-0.5 text-[10px]">
+                  📎 {a.name}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     );
