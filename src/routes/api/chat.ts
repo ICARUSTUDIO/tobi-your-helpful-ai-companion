@@ -103,6 +103,7 @@ const UAS = [
 
 async function redditFetch(path: string, log: ReturnType<typeof makeLogger>): Promise<any> {
   let lastErr = "";
+  // 1) direct attempts to reddit hosts
   for (const host of REDDIT_HOSTS) {
     for (const ua of UAS) {
       const url = `https://${host}${path}`;
@@ -115,14 +116,7 @@ async function redditFetch(path: string, log: ReturnType<typeof makeLogger>): Pr
         });
         const ct = res.headers.get("content-type") || "";
         log.info("reddit.fetch", `← ${res.status} ${ct}`);
-        if (res.status === 429 || res.status === 403) {
-          lastErr = `${host} → ${res.status}`;
-          continue;
-        }
-        if (!res.ok) {
-          lastErr = `${host} → ${res.status}`;
-          continue;
-        }
+        if (!res.ok) { lastErr = `${host} → ${res.status}`; continue; }
         const text = await res.text();
         if (!text.trim().startsWith("{") && !text.trim().startsWith("[")) {
           lastErr = `${host} → non-JSON (${text.slice(0, 80)}…)`;
@@ -136,7 +130,35 @@ async function redditFetch(path: string, log: ReturnType<typeof makeLogger>): Pr
       }
     }
   }
-  throw new Error(`All Reddit hosts failed: ${lastErr}`);
+  // 2) fallback: route through r.jina.ai reader proxy — free, no key, edge-friendly.
+  //    Works great for JSON endpoints; jina returns the raw body as text.
+  for (const host of REDDIT_HOSTS) {
+    const url = `https://r.jina.ai/https://${host}${path}`;
+    try {
+      log.info("reddit.fetch", `proxy GET ${url}`);
+      const res = await fetch(url, {
+        headers: { "User-Agent": UAS[0], Accept: "application/json, text/plain, */*", "X-Return-Format": "text" },
+      });
+      log.info("reddit.fetch", `← proxy ${res.status}`);
+      if (!res.ok) { lastErr = `jina(${host}) → ${res.status}`; continue; }
+      const text = await res.text();
+      // jina may prepend a title/url header — slice from the first { or [
+      const start = Math.min(
+        ...["{", "["].map((c) => { const i = text.indexOf(c); return i < 0 ? Infinity : i; })
+      );
+      if (!Number.isFinite(start)) { lastErr = `jina(${host}) → no JSON in body`; continue; }
+      try {
+        return JSON.parse(text.slice(start));
+      } catch (e: any) {
+        lastErr = `jina(${host}) → parse fail (${e?.message})`;
+        log.warn("reddit.fetch", lastErr);
+      }
+    } catch (e: any) {
+      lastErr = `jina(${host}) → ${e?.message || e}`;
+      log.warn("reddit.fetch", lastErr);
+    }
+  }
+  throw new Error(`All Reddit routes failed: ${lastErr}`);
 }
 
 async function fetchReddit(args: { url?: string; query?: string; subreddit?: string }, log: ReturnType<typeof makeLogger>) {
