@@ -71,7 +71,7 @@ function PrivacyPage() {
               <li>Withdraw consent for AI learning</li>
               <li>Export your data</li>
             </ul>
-            <p className="mt-2">To exercise these rights, contact us at <a href="mailto:support@t-obi.xyz" className="underline text-tobi">support@t-obi.xyz</a>.</p>
+            <p className="mt-2">To exercise these rights, contact us at <a href="mailto:tobyfemi@proton.me" className="underline text-tobi">tobyfemi@proton.me</a>.</p>
           </section>
 
           <section>
@@ -96,7 +96,7 @@ function PrivacyPage() {
 
           <section>
             <h2 className="font-display text-xl font-semibold mb-3 text-foreground">11. Contact Us</h2>
-            <p>If you have questions or concerns about this Privacy Policy or your data, please contact us at <a href="mailto:support@t-obi.xyz" className="underline text-tobi">support@t-obi.xyz</a>.</p>
+            <p>If you have questions or concerns about this Privacy Policy or your data, please contact us at <a href="mailto:tobyfemi@proton.me" className="underline text-tobi">tobyfemi@proton.me</a>.</p>
           </section>
         </div>
       </div>
