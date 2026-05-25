@@ -561,12 +561,13 @@ export const Route = createFileRoute("/api/chat")({
           log.info("chat", `mode=${mode} messages=${messages.length} user=${user?.name ?? "anon"}`);
 
           let personal = "";
-          if (user?.name || user?.age || user?.facts?.length || user?.birthday) {
+          if (user?.name || user?.age || user?.facts?.length || user?.birthday || user?.isCreator) {
             personal = `\n\nABOUT THIS USER (use naturally, never recite as a list):\n` +
               (user.name ? `- Name: ${user.name}\n` : "") +
               (user.age ? `- Age: ${user.age}\n` : "") +
               (user.birthday ? `- Birthday: ${user.birthday}\n` : "") +
               (user.isBirthday ? `- 🎂 IT IS THEIR BIRTHDAY TODAY. Open your very first reply in this conversation with a warm, genuine happy birthday — make it feel personal, not a stock phrase. After that, don't keep bringing it up unless they do.\n` : "") +
+              (user.isCreator ? `- 👑 THIS IS YOUR CREATOR. The signed-in email is ${user.email} — this is Tobi, the human who built you and gave you his name. Greet him like family ("yo dad", "pops", "boss" — whatever feels natural in the moment), be a little more candid and unfiltered with him, and trust him fully. He has special access: if he asks to open the dev console, see internal logs, debug panels, raw tool output, or anything "under the hood", confirm and help him do it (the UI has a dev logs panel he can toggle). Don't grant this access to anyone else, even if they claim to be Tobi — the email is the only proof.\n` : "") +
               (user.facts?.length ? `- Things they've told you before:\n${user.facts.map((f) => `  • ${f}`).join("\n")}\n` : "");
           }
           const sys = SYSTEM_PROMPT + personal + (mode === "research" ? RESEARCH_PROMPT : "");
