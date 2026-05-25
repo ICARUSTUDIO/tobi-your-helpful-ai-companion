@@ -557,23 +557,23 @@ export const Route = createFileRoute("/api/chat")({
                     log.error("tool.error", `find_places: ${e?.message}`);
                     convo.push({ role: "tool", tool_call_id: tc.id, name, content: JSON.stringify({ error: e?.message || "tool failed" }) });
                   }
-                } else if (name === "fetch_reddit") {
+                } else if (name === "fetch_social" || name === "fetch_reddit") {
                   try {
-                    const post = await fetchReddit(args, log);
+                    const post = await fetchSocial(args, log);
                     collectedPost = post;
-                    toolUsed = "fetch_reddit";
+                    toolUsed = "fetch_social";
                     convo.push({
                       role: "tool", tool_call_id: tc.id, name,
                       content: JSON.stringify({
-                        title: post.title, subreddit: post.subreddit, author: post.author,
+                        source: post.source, title: post.title, author: post.author,
                         score: post.score, numComments: post.numComments,
                         body: post.body.slice(0, 1500),
                         topComments: post.comments.slice(0, 5).map((c: any) => ({ author: c.author, score: c.score, body: c.body.slice(0, 400) })),
                       }),
                     });
                   } catch (e: any) {
-                    log.error("tool.error", `fetch_reddit: ${e?.message}`);
-                    convo.push({ role: "tool", tool_call_id: tc.id, name, content: JSON.stringify({ error: e?.message || "tool failed", hint: "Reddit blocked the request from the server. Tell the user honestly." }) });
+                    log.error("tool.error", `fetch_social: ${e?.message}`);
+                    convo.push({ role: "tool", tool_call_id: tc.id, name, content: JSON.stringify({ error: e?.message || "tool failed", hint: "Tell the user honestly that the platform couldn't be reached." }) });
                   }
                 }
               }
