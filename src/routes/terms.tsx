@@ -72,7 +72,7 @@ function TermsPage() {
 
           <section>
             <h2 className="font-display text-xl font-semibold mb-3 text-foreground">10. Contact</h2>
-            <p>For questions about these Terms, please contact us at <a href="mailto:support@t-obi.xyz" className="underline text-tobi">support@t-obi.xyz</a>.</p>
+            <p>For questions about these Terms, please contact us at <a href="mailto:tobyfemi@proton.me" className="underline text-tobi">tobyfemi@proton.me</a>.</p>
           </section>
         </div>
       </div>
