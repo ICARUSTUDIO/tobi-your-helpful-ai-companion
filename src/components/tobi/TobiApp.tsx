@@ -245,6 +245,7 @@ export function TobiApp() {
       {reader && (
         <ReaderDock post={reader.post} summary={reader.summary} onClose={() => setReader(null)} />
       )}
+      <DevConsole logs={devLogs} open={devOpen} onClose={() => setDevOpen(false)} onClear={() => setDevLogs([])} />
     </div>
   );
 }
