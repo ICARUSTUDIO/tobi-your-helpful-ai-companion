@@ -170,7 +170,7 @@ export function TobiApp() {
         body: JSON.stringify({
           mode,
           messages: payloadMessages,
-          user: profile ? { name: profile.name, age: profile.age, birthday: profile.birthday ?? null, isBirthday, facts: facts.slice(0, 15) } : undefined,
+          user: profile ? { name: profile.name, age: profile.age, birthday: profile.birthday ?? null, isBirthday, email: user?.email ?? null, isCreator: (user?.email ?? "").toLowerCase() === "tobyfemi55@gmail.com", facts: facts.slice(0, 15) } : undefined,
         }),
         signal: controller.signal,
       });
