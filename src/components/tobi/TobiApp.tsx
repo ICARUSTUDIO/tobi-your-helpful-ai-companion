@@ -30,6 +30,9 @@ export function TobiApp() {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const [pendingPrompt, setPendingPrompt] = useState<{ text: string; mode: "normal" | "research" } | null>(null);
+
 
   useEffect(() => {
     const saved = (typeof localStorage !== "undefined" && localStorage.getItem("tobi-theme")) as "dark" | "light" | null;
@@ -72,23 +75,24 @@ export function TobiApp() {
     if (fileRef.current) fileRef.current.value = "";
   }
 
-  async function send() {
-    const text = input.trim();
-    if ((!text && pendingDocs.length === 0) || busy) return;
-
-    const userContent = text || "(see attached document)";
-    const docs = pendingDocs;
-    const userMsg: ChatMessage = {
-      id: uid(), role: "user", content: userContent,
-      attachments: docs.map((d) => ({ name: d.name, kind: d.kind, preview: d.preview })),
-    };
+  async function runChat(opts: {
+    baseMessages: ChatMessage[];
+    userMsg: ChatMessage;
+    docs: { name: string; kind: "docx" | "xlsx"; text: string; preview: string }[];
+    mode: "normal" | "research";
+    originalInputText: string;
+  }) {
+    const { baseMessages, userMsg, docs, mode, originalInputText } = opts;
     const pendingId = uid();
-    const pending: ChatMessage = { id: pendingId, role: "assistant", content: "", pending: true, mode: research ? "research" : "normal" };
-    const nextMessages = [...messages, userMsg];
+    const pending: ChatMessage = { id: pendingId, role: "assistant", content: "", pending: true, mode };
+    const nextMessages = [...baseMessages, userMsg];
     setMessages([...nextMessages, pending]);
-    setInput(""); setPendingDocs([]); setBusy(true);
+    setBusy(true);
+    setPendingPrompt({ text: userMsg.content, mode });
 
-    // Build payload — inject doc content into the user message sent to the model
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     const payloadMessages = nextMessages.map((m) => {
       if (m.id === userMsg.id && docs.length > 0) {
         const docBlocks = docs.map((d) => `\n\n--- Attached ${d.kind.toUpperCase()}: ${d.name} ---\n${d.text}\n--- end ${d.name} ---`).join("");
@@ -101,11 +105,12 @@ export function TobiApp() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: research ? "research" : "normal", messages: payloadMessages }),
+        body: JSON.stringify({ mode, messages: payloadMessages }),
+        signal: controller.signal,
       });
       const data = await res.json();
       if (Array.isArray(data?.logs)) {
-        setDevLogs((prev) => [...prev, { t: Date.now(), level: "info", tag: "client", msg: `── request "${userContent.slice(0, 60)}" ──` }, ...data.logs]);
+        setDevLogs((prev) => [...prev, { t: Date.now(), level: "info", tag: "client", msg: `── request "${userMsg.content.slice(0, 60)}" ──` }, ...data.logs]);
       }
       if (!res.ok) throw new Error(data?.error || `Request failed (${res.status})`);
 
@@ -114,17 +119,70 @@ export function TobiApp() {
         content: data.text || "",
         places: data.places ?? null,
         post: data.post ?? null,
-        mode: research ? "research" : "normal",
+        mode,
       };
       setMessages([...nextMessages, reply]);
       if (data.places?.length > 0) setMapView({ places: data.places, summary: data.text || "" });
       if (data.post) setReader({ post: data.post, summary: data.text || "" });
     } catch (e: any) {
-      setDevLogs((prev) => [...prev, { t: Date.now(), level: "error", tag: "client", msg: e?.message || "request failed" }]);
-      setMessages([...nextMessages, { id: pendingId, role: "assistant", content: `⚠️ ${e?.message || "Something went wrong."}` }]);
+      if (e?.name === "AbortError") {
+        setDevLogs((prev) => [...prev, { t: Date.now(), level: "warn", tag: "client", msg: "stopped by user" }]);
+        setMessages(baseMessages);
+        if (originalInputText) setInput(originalInputText);
+        if (docs.length) setPendingDocs(docs);
+        setTimeout(() => inputRef.current?.focus(), 0);
+      } else {
+        setDevLogs((prev) => [...prev, { t: Date.now(), level: "error", tag: "client", msg: e?.message || "request failed" }]);
+        setMessages([...nextMessages, { id: pendingId, role: "assistant", content: `⚠️ ${e?.message || "Something went wrong."}` }]);
+      }
     } finally {
-      setBusy(false); setResearch(false); inputRef.current?.focus();
+      setBusy(false); setResearch(false); setPendingPrompt(null); abortRef.current = null;
+      inputRef.current?.focus();
     }
+  }
+
+  async function send() {
+    const text = input.trim();
+    if ((!text && pendingDocs.length === 0) || busy) return;
+    const userContent = text || "(see attached document)";
+    const docs = pendingDocs;
+    const originalInputText = input;
+    const userMsg: ChatMessage = {
+      id: uid(), role: "user", content: userContent,
+      attachments: docs.map((d) => ({ name: d.name, kind: d.kind, preview: d.preview })),
+    };
+    setInput(""); setPendingDocs([]);
+    await runChat({ baseMessages: messages, userMsg, docs, mode: research ? "research" : "normal", originalInputText });
+  }
+
+  function stop() {
+    abortRef.current?.abort();
+  }
+
+  function retry(messageId: string, mode: "normal" | "research") {
+    if (busy) return;
+    const idx = messages.findIndex((m) => m.id === messageId);
+    if (idx < 0) return;
+    const original = messages[idx];
+    if (original.role !== "user") return;
+    const baseMessages = messages.slice(0, idx);
+    const userMsg: ChatMessage = { ...original, id: uid() };
+    runChat({ baseMessages, userMsg, docs: [], mode, originalInputText: "" });
+  }
+
+  function editMessage(messageId: string) {
+    if (busy) return;
+    const idx = messages.findIndex((m) => m.id === messageId);
+    if (idx < 0) return;
+    const original = messages[idx];
+    if (original.role !== "user") return;
+    setMessages(messages.slice(0, idx));
+    setInput(original.content);
+    setTimeout(() => {
+      const el = inputRef.current;
+      el?.focus();
+      if (el) el.setSelectionRange(el.value.length, el.value.length);
+    }, 0);
   }
 
   function onKey(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -167,14 +225,24 @@ export function TobiApp() {
               </div>
             </div>
           ) : (
-            messages.map((m) => (
-              <Message
-                key={m.id}
-                m={m}
-                onShowMap={m.places ? () => setMapView({ places: m.places!, summary: m.content }) : undefined}
-                onShowReader={m.post ? () => setReader({ post: m.post!, summary: m.content }) : undefined}
-              />
-            ))
+            messages.map((m, i) => {
+              const isLastUser = m.role === "user" && i === messages.length - 1 && !busy;
+              const isPriorUser = m.role === "user" && i < messages.length - 1 && messages[i + 1]?.role === "assistant" && !messages[i + 1]?.pending;
+              const canAct = (isLastUser || isPriorUser) && !busy;
+              return (
+                <Message
+                  key={m.id}
+                  m={m}
+                  pendingPromptText={m.pending ? pendingPrompt?.text : undefined}
+                  pendingPromptMode={m.pending ? pendingPrompt?.mode : undefined}
+                  onShowMap={m.places ? () => setMapView({ places: m.places!, summary: m.content }) : undefined}
+                  onShowReader={m.post ? () => setReader({ post: m.post!, summary: m.content }) : undefined}
+                  onRetry={canAct ? () => retry(m.id, m.mode === "research" ? "research" : "normal") : undefined}
+                  onEdit={canAct ? () => editMessage(m.id) : undefined}
+                  onDeepDive={canAct ? () => retry(m.id, "research") : undefined}
+                />
+              );
+            })
           )}
         </div>
       </main>
@@ -224,14 +292,25 @@ export function TobiApp() {
                   Research
                 </button>
               </div>
-              <button
-                onClick={send}
-                disabled={busy || (!input.trim() && pendingDocs.length === 0)}
-                className="inline-flex items-center gap-1.5 rounded-full bg-tobi text-primary-foreground px-4 py-1.5 text-xs font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition"
-              >
-                {busy ? "Thinking…" : "Send"}
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-              </button>
+              {busy ? (
+                <button
+                  onClick={stop}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-foreground text-background px-4 py-1.5 text-xs font-semibold hover:opacity-90 transition"
+                  title="Stop generating"
+                >
+                  Stop
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
+                </button>
+              ) : (
+                <button
+                  onClick={send}
+                  disabled={!input.trim() && pendingDocs.length === 0}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-tobi text-primary-foreground px-4 py-1.5 text-xs font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                >
+                  Send
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                </button>
+              )}
             </div>
           </div>
           <div className="text-[10px] text-muted-foreground text-center mt-2">
