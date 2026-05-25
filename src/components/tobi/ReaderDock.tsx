@@ -17,10 +17,29 @@ function useTTS() {
   const [speaking, setSpeaking] = useState(false);
   const [paused, setPaused] = useState(false);
   const [voiceName, setVoiceName] = useState<string>("Natural browser voice");
+  const [intensity, setIntensity] = useState(0); // 0..1, pulses on each spoken word
   const queueRef = useRef<SpeechSynthesisUtterance[]>([]);
   const onDoneRef = useRef<(() => void) | null>(null);
+  const decayRef = useRef<number | null>(null);
 
-  useEffect(() => () => { try { window.speechSynthesis?.cancel(); } catch {} }, []);
+  useEffect(() => () => {
+    try { window.speechSynthesis?.cancel(); } catch {}
+    if (decayRef.current) cancelAnimationFrame(decayRef.current);
+  }, []);
+
+  function startDecay() {
+    if (decayRef.current) cancelAnimationFrame(decayRef.current);
+    const tick = () => {
+      setIntensity((v) => Math.max(0, v - 0.04));
+      decayRef.current = requestAnimationFrame(tick);
+    };
+    decayRef.current = requestAnimationFrame(tick);
+  }
+  function stopDecay() {
+    if (decayRef.current) cancelAnimationFrame(decayRef.current);
+    decayRef.current = null;
+    setIntensity(0);
+  }
 
   function speak(chunks: string[], onDone?: () => void) {
     if (typeof window === "undefined" || !window.speechSynthesis) return;
@@ -35,21 +54,23 @@ function useTTS() {
     chunks.forEach((text, i) => {
       const u = new SpeechSynthesisUtterance(text);
       if (preferredVoice) u.voice = preferredVoice;
-      u.rate = 0.72;
+      u.rate = 0.92;
       u.pitch = 0.96;
       u.volume = 0.92;
+      u.onboundary = () => setIntensity(0.6 + Math.random() * 0.4);
       if (i === chunks.length - 1) {
-        u.onend = () => { setSpeaking(false); setPaused(false); onDoneRef.current?.(); };
+        u.onend = () => { setSpeaking(false); setPaused(false); stopDecay(); onDoneRef.current?.(); };
       }
       queueRef.current.push(u);
       window.speechSynthesis.speak(u);
     });
     setSpeaking(true); setPaused(false);
+    startDecay();
   }
-  function pause() { window.speechSynthesis.pause(); setPaused(true); }
-  function resume() { window.speechSynthesis.resume(); setPaused(false); }
-  function stop() { window.speechSynthesis.cancel(); setSpeaking(false); setPaused(false); }
-  return { speaking, paused, voiceName, speak, pause, resume, stop };
+  function pause() { window.speechSynthesis.pause(); setPaused(true); stopDecay(); }
+  function resume() { window.speechSynthesis.resume(); setPaused(false); startDecay(); }
+  function stop() { window.speechSynthesis.cancel(); setSpeaking(false); setPaused(false); stopDecay(); }
+  return { speaking, paused, voiceName, intensity, speak, pause, resume, stop };
 }
 
 function chunkText(s: string, max = 140): string[] {
