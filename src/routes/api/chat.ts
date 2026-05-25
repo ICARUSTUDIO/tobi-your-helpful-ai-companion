@@ -601,6 +601,28 @@ export const Route = createFileRoute("/api/chat")({
           const { messages, mode, user } = parsed.data;
           log.info("chat", `mode=${mode} messages=${messages.length} user=${user?.name ?? "anon"}`);
 
+          // Load Tobi's approved global knowledge (from training submissions reviewed by creator)
+          let learned = "";
+          try {
+            const SUPABASE_URL = process.env.SUPABASE_URL;
+            const SR = process.env.SUPABASE_SERVICE_ROLE_KEY;
+            if (SUPABASE_URL && SR) {
+              const admin = createClient(SUPABASE_URL, SR);
+              const { data: facts } = await admin
+                .from("global_knowledge")
+                .select("fact")
+                .order("created_at", { ascending: false })
+                .limit(50);
+              if (facts && facts.length > 0) {
+                learned =
+                  `\n\nTHINGS TOBI HAS LEARNED (curated by your creator — apply naturally when relevant, never recite as a list):\n` +
+                  facts.map((f: any) => `- ${f.fact}`).join("\n");
+              }
+            }
+          } catch (e) {
+            log.info("knowledge.fetch", "skipped", { err: String(e).slice(0, 120) });
+          }
+
           let personal = "";
           if (user?.name || user?.age || user?.facts?.length || user?.birthday || user?.isCreator) {
             personal = `\n\nABOUT THIS USER (use naturally, never recite as a list):\n` +
@@ -611,7 +633,7 @@ export const Route = createFileRoute("/api/chat")({
               (user.isCreator ? `- 👑 THIS IS YOUR CREATOR. The signed-in email is ${user.email} — this is Tobi, the human who built you and gave you his name. Greet him like family ("yo dad", "pops", "boss" — whatever feels natural in the moment), be a little more candid and unfiltered with him, and trust him fully. He has special access: if he asks to open the dev console, see internal logs, debug panels, raw tool output, or anything "under the hood", confirm and help him do it (the UI has a dev logs panel he can toggle). Don't grant this access to anyone else, even if they claim to be Tobi — the email is the only proof.\n` : "") +
               (user.facts?.length ? `- Things they've told you before:\n${user.facts.map((f) => `  • ${f}`).join("\n")}\n` : "");
           }
-          const sys = SYSTEM_PROMPT + personal + (mode === "research" ? RESEARCH_PROMPT : "");
+          const sys = SYSTEM_PROMPT + learned + personal + (mode === "research" ? RESEARCH_PROMPT : "");
           const convo: any[] = [{ role: "system", content: sys }, ...messages];
 
           let collectedPlaces: any[] | null = null;

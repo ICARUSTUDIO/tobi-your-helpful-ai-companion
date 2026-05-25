@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 
 interface Props {
@@ -12,6 +13,7 @@ interface Props {
 export function UserMenu({ name, email, onOpenHistory, onOpenMemory, onNewChat }: Props) {
   const [open, setOpen] = useState(false);
   const initial = (name || email || "?").charAt(0).toUpperCase();
+  const isCreator = (email ?? "").toLowerCase() === "tobyfemi55@gmail.com";
 
   return (
     <div className="relative">
@@ -32,6 +34,11 @@ export function UserMenu({ name, email, onOpenHistory, onOpenMemory, onNewChat }
               <span>What Tobi knows</span>
               <span className="text-[10px] text-muted-foreground">memory</span>
             </button>
+            {isCreator && (
+              <Link to="/admin/training" onClick={() => setOpen(false)} className="block w-full text-left px-3 py-2 hover:bg-muted text-tobi">
+                👑 Training review
+              </Link>
+            )}
             <div className="h-px bg-border my-1" />
             <button onClick={() => supabase.auth.signOut()} className="w-full text-left px-3 py-2 hover:bg-muted text-red-400">Sign out</button>
           </div>
