@@ -1,10 +1,11 @@
+import type { ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { TobiLogo } from "./TobiLogo";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 import type { ChatMessage } from "./types";
 
-function IconBtn({ title, onClick, children }: { title: string; onClick: () => void; children: React.ReactNode }) {
+function IconBtn({ title, onClick, children }: { title: string; onClick: () => void; children: ReactNode }) {
   return (
     <button
       onClick={onClick}
