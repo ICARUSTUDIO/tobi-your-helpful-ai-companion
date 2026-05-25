@@ -111,7 +111,7 @@
     color: var(--primary-foreground);
   }
   .bg-grid-soft {
-    background-image: radial-gradient(color-mix(in oklab, var(--foreground) 10%, transparent) 1px, transparent 1px);
+    background-image: radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1px);
     background-size: 22px 22px;
   }
   .tobi-logo-ring { fill: color-mix(in oklab, var(--background) 16%, transparent); stroke: color-mix(in oklab, var(--tobi-glow) 78%, var(--foreground)); stroke-width: 2.5; }
