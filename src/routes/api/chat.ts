@@ -58,14 +58,19 @@ const tools = [
   {
     type: "function",
     function: {
-      name: "fetch_reddit",
-      description: "Fetch a Reddit post and its comments. Use when the user asks to check Reddit / look up a post / discussion / thread on Reddit, Quora-like sites, or shares a reddit URL. You can either pass a direct reddit url, OR a search query (with optional subreddit) and the top matching post will be fetched.",
+      name: "fetch_social",
+      description: "Fetch a post / thread / tweet / video / article and its replies or comments from a social platform or the open web. Use this when the user asks to check what people are saying on Reddit, X (Twitter), Instagram, Facebook, TikTok, YouTube, Threads, LinkedIn, Quora, Hacker News, or shares a link to any of those sites or a general article. Pass either a direct URL OR a search query (and optionally a platform).",
       parameters: {
         type: "object",
         properties: {
-          url: { type: "string", description: "Direct reddit.com post URL, if the user provided one" },
-          query: { type: "string", description: "Search query if no URL was given, e.g. 'best mechanical keyboard under 100'" },
-          subreddit: { type: "string", description: "Optional subreddit name (no r/)" },
+          url: { type: "string", description: "Direct post URL if the user provided one" },
+          query: { type: "string", description: "Search query if no URL was given" },
+          platform: {
+            type: "string",
+            enum: ["reddit", "x", "instagram", "facebook", "tiktok", "youtube", "threads", "linkedin", "quora", "hackernews", "web"],
+            description: "Which platform to focus the search on. Default 'web' searches everywhere.",
+          },
+          subreddit: { type: "string", description: "Reddit-only: subreddit name (no r/)" },
         },
         additionalProperties: false,
       },
