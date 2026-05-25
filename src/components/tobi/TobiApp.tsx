@@ -75,7 +75,6 @@ export function TobiApp() {
     if (fileRef.current) fileRef.current.value = "";
   }
 
-  async function send() {
   async function runChat(opts: {
     baseMessages: ChatMessage[];
     userMsg: ChatMessage;
