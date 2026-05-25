@@ -43,15 +43,83 @@ const tools = [
       parameters: {
         type: "object",
         properties: {
-          query: { type: "string", description: "Free-text search, e.g. 'best ramen in Tokyo Shibuya' or 'pharmacies near Eiffel Tower'" },
-          near: { type: "string", description: "Optional location bias, e.g. 'Brooklyn, NY'" },
+          query: { type: "string", description: "Free-text search" },
+          near: { type: "string", description: "Optional location bias" },
         },
         required: ["query"],
         additionalProperties: false,
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "fetch_reddit",
+      description: "Fetch a Reddit post and its comments. Use when the user asks to check Reddit / look up a post / discussion / thread on Reddit, Quora-like sites, or shares a reddit URL. You can either pass a direct reddit url, OR a search query (with optional subreddit) and the top matching post will be fetched.",
+      parameters: {
+        type: "object",
+        properties: {
+          url: { type: "string", description: "Direct reddit.com post URL, if the user provided one" },
+          query: { type: "string", description: "Search query if no URL was given, e.g. 'best mechanical keyboard under 100'" },
+          subreddit: { type: "string", description: "Optional subreddit name (no r/)" },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
 ];
+
+async function fetchReddit(args: { url?: string; query?: string; subreddit?: string }) {
+  const headers = { "User-Agent": "TobiAI/1.0 (by /u/tobi)" } as Record<string, string>;
+  let postUrl = args.url;
+  if (!postUrl) {
+    const q = (args.query || "").trim();
+    if (!q) throw new Error("Need a url or query");
+    const sub = args.subreddit ? `r/${args.subreddit}/` : "";
+    const searchUrl = `https://www.reddit.com/${sub}search.json?q=${encodeURIComponent(q)}&restrict_sr=${args.subreddit ? "on" : "off"}&sort=relevance&limit=5`;
+    const sres = await fetch(searchUrl, { headers });
+    if (!sres.ok) throw new Error(`Reddit search failed [${sres.status}]`);
+    const sdata = await sres.json() as any;
+    const first = sdata?.data?.children?.[0]?.data;
+    if (!first) throw new Error("No reddit posts found");
+    postUrl = `https://www.reddit.com${first.permalink}`;
+  }
+  // Normalize → .json
+  const jsonUrl = postUrl.replace(/\/?$/, "").replace(/\.json$/, "") + ".json?limit=200&depth=4";
+  const res = await fetch(jsonUrl, { headers });
+  if (!res.ok) throw new Error(`Reddit fetch failed [${res.status}]`);
+  const data = await res.json() as any[];
+  const post = data?.[0]?.data?.children?.[0]?.data;
+  if (!post) throw new Error("Could not parse reddit post");
+
+  const flat: any[] = [];
+  function walk(node: any, depth: number) {
+    if (!node || node.kind !== "t1") return;
+    const d = node.data;
+    if (!d || d.body === "[deleted]" || d.body === "[removed]") return;
+    flat.push({
+      id: d.id, author: d.author || "unknown", body: d.body || "",
+      score: d.score ?? 0, depth, createdUtc: d.created_utc,
+    });
+    const replies = d.replies?.data?.children;
+    if (Array.isArray(replies)) replies.forEach((r) => walk(r, depth + 1));
+  }
+  const top = data?.[1]?.data?.children ?? [];
+  top.forEach((c: any) => walk(c, 0));
+
+  return {
+    id: post.id,
+    source: "reddit" as const,
+    subreddit: post.subreddit,
+    title: post.title,
+    author: post.author,
+    body: post.selftext || "",
+    url: `https://www.reddit.com${post.permalink}`,
+    score: post.score,
+    numComments: post.num_comments,
+    comments: flat.slice(0, 100),
+  };
+}
 
 async function findPlaces(query: string, near?: string) {
   const LOVABLE_API_KEY = process.env.LOVABLE_API_KEY;
