@@ -1,0 +1,9 @@
+# Tobi AI
+
+> Tobi AI is a personalized, interactive AI assistant that codes, debugs, runs deep research, finds places on an interactive map, and remembers what matters to you across conversations.
+
+## Pages
+
+- [Home](/): What Tobi AI is and what it can do.
+- [Privacy Policy](/privacy): How Tobi AI handles your account, chats, and memory data.
+- [Terms of Service](/terms): The terms that govern your use of Tobi AI.

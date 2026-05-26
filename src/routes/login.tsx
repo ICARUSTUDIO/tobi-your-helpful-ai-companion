@@ -10,7 +10,16 @@ export const Route = createFileRoute("/login")({
     if (data.session) throw redirect({ to: "/app" });
   },
   component: LoginPage,
-  head: () => ({ meta: [{ title: "Sign in to Tobi" }] }),
+  head: () => ({
+    meta: [
+      { title: "Sign in to Tobi AI" },
+      { name: "description", content: "Sign in or create your Tobi AI account to chat with your personal AI bro — code, research, maps, and memory in one place." },
+      { property: "og:title", content: "Sign in to Tobi AI" },
+      { property: "og:description", content: "Sign in or create your Tobi AI account to start chatting with your personal AI bro." },
+      { property: "og:url", content: "https://t-obi.xyz/login" },
+    ],
+    links: [{ rel: "canonical", href: "https://t-obi.xyz/login" }],
+  }),
 });
 
 function LoginPage() {
@@ -75,10 +84,15 @@ function LoginPage() {
         </div>
         <form onSubmit={submit} className="space-y-3">
           {mode === "signup" && (
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" className="w-full rounded-xl bg-background border border-border px-3 py-2 text-sm outline-none focus:border-tobi" />
+            <>
+              <label htmlFor="login-name" className="sr-only">Your name</label>
+              <input id="login-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" aria-label="Your name" className="w-full rounded-xl bg-background border border-border px-3 py-2 text-sm outline-none focus:border-tobi" />
+            </>
           )}
-          <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" required placeholder="you@anywhere.com (Proton works too)" className="w-full rounded-xl bg-background border border-border px-3 py-2 text-sm outline-none focus:border-tobi" />
-          <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" required minLength={6} placeholder="Password" className="w-full rounded-xl bg-background border border-border px-3 py-2 text-sm outline-none focus:border-tobi" />
+          <label htmlFor="login-email" className="sr-only">Email</label>
+          <input id="login-email" value={email} onChange={(e) => setEmail(e.target.value)} type="email" required placeholder="you@anywhere.com (Proton works too)" aria-label="Email" className="w-full rounded-xl bg-background border border-border px-3 py-2 text-sm outline-none focus:border-tobi" />
+          <label htmlFor="login-password" className="sr-only">Password</label>
+          <input id="login-password" value={password} onChange={(e) => setPassword(e.target.value)} type="password" required minLength={6} placeholder="Password" aria-label="Password" className="w-full rounded-xl bg-background border border-border px-3 py-2 text-sm outline-none focus:border-tobi" />
           {err && <div className="text-xs text-red-400">{err}</div>}
           <button type="submit" disabled={busy} className="w-full rounded-full bg-tobi text-primary-foreground py-2.5 text-sm font-semibold hover:opacity-90 disabled:opacity-50">
             {busy ? "..." : mode === "signin" ? "Sign in" : "Create account"}
