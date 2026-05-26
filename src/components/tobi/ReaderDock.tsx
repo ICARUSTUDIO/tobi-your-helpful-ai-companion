@@ -16,13 +16,14 @@ interface Props {
 function useTTS() {
   const [speaking, setSpeaking] = useState(false);
   const [paused, setPaused] = useState(false);
-  const [voiceName, setVoiceName] = useState<string>("Thalia · Deepgram");
+  const [voiceName, setVoiceName] = useState<string>("Andromeda · Deepgram");
   const [intensity, setIntensity] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const rafRef = useRef<number | null>(null);
   const cancelledRef = useRef(false);
+  const pausedRef = useRef(false);
   const onDoneRef = useRef<(() => void) | null>(null);
   const usingBrowserRef = useRef(false);
 
