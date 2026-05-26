@@ -460,10 +460,35 @@ export function TobiApp() {
                 </p>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-xl mx-auto pt-4">
-                {SUGGESTIONS.map((s) => (
-                  <button key={s} onClick={() => setInput(s)} className="text-left rounded-xl border border-border bg-card/60 backdrop-blur px-4 py-3 text-sm hover:border-tobi/50 hover:bg-card transition">{s}</button>
-                ))}
+                {(() => {
+                  const continueConvo = recentConvos.find((c) => c.id !== conversationId && c.title && c.title.toLowerCase() !== "new chat");
+                  const promptCount = continueConvo ? 3 : 4;
+                  const prompts = pickDailySuggestions(SUGGESTION_POOL, promptCount);
+                  const tiles: React.ReactNode[] = prompts.map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => setInput(s)}
+                      className="text-left rounded-xl border border-border bg-card/60 backdrop-blur px-4 py-3 text-sm hover:border-tobi/50 hover:bg-card transition"
+                    >
+                      {s}
+                    </button>
+                  ));
+                  if (continueConvo) {
+                    tiles.push(
+                      <button
+                        key={`continue-${continueConvo.id}`}
+                        onClick={() => selectConversation(continueConvo.id)}
+                        className="text-left rounded-xl border border-tobi/40 bg-tobi/10 backdrop-blur px-4 py-3 text-sm hover:border-tobi hover:bg-tobi/15 transition"
+                      >
+                        <div className="text-[10px] uppercase tracking-wider text-tobi/80 mb-0.5">Continue</div>
+                        <div className="truncate">{continueConvo.title}</div>
+                      </button>,
+                    );
+                  }
+                  return tiles;
+                })()}
               </div>
+
             </div>
           ) : (
             messages.map((m, i) => {
