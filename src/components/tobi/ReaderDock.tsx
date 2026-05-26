@@ -6,6 +6,7 @@ import type { RedditPost } from "./types";
 
 type Mode = "expanded" | "docked" | "hidden";
 const PAGE = 5;
+const VOICE_LABEL = "Luna · Deepgram";
 
 interface Props {
   post: RedditPost;
@@ -16,7 +17,7 @@ interface Props {
 function useTTS() {
   const [speaking, setSpeaking] = useState(false);
   const [paused, setPaused] = useState(false);
-  const [voiceName] = useState<string>("Aria · ElevenLabs");
+  const [voiceName] = useState<string>(VOICE_LABEL);
   const [intensity, setIntensity] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const rafRef = useRef<number | null>(null);
