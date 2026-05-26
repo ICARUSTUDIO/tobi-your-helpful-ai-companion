@@ -590,7 +590,9 @@ export function TobiApp() {
       </footer>
 
       {mapView && (
-        <MapOverlay places={mapView.places} summary={mapView.summary} onClose={() => setMapView(null)} />
+        <Suspense fallback={<div className="absolute inset-0 z-30 bg-background/80 backdrop-blur flex items-center justify-center text-sm text-muted-foreground">Loading map…</div>}>
+          <MapOverlay places={mapView.places} summary={mapView.summary} onClose={() => setMapView(null)} />
+        </Suspense>
       )}
       {reader && (
         <ReaderDock post={reader.post} summary={reader.summary} onClose={() => setReader(null)} />
