@@ -6,12 +6,43 @@ export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "Tobi AI — your interactive AI bro" },
-      { name: "description", content: "Tobi AI is an interactive, bro-like AI assistant that writes code, debugs, researches deeply, finds places on an interactive map, and remembers what matters to you." },
+      { name: "description", content: "Tobi AI is a personalized AI assistant that codes, debugs, researches, finds places on a map, and remembers what matters." },
       { property: "og:title", content: "Tobi AI — your interactive AI bro" },
-      { property: "og:description", content: "Tobi AI is an interactive, bro-like AI assistant that writes code, debugs, researches deeply, finds places on an interactive map, and remembers what matters to you." },
+      { property: "og:description", content: "Tobi AI codes, debugs, researches, finds places on a map, and remembers what matters." },
       { property: "og:url", content: "https://t-obi.xyz/" },
     ],
     links: [{ rel: "canonical", href: "https://t-obi.xyz/" }],
+    scripts: [
+      {
+        type: "application/ld+json",
+        children: JSON.stringify({
+          "@context": "https://schema.org",
+          "@graph": [
+            {
+              "@type": "Organization",
+              name: "Tobi AI",
+              url: "https://t-obi.xyz/",
+              email: "tobyfemi@proton.me",
+            },
+            {
+              "@type": "WebSite",
+              name: "Tobi AI",
+              url: "https://t-obi.xyz/",
+              description: "Personalized, interactive AI assistant that codes, debugs, researches, finds places, and remembers what matters.",
+            },
+            {
+              "@type": "SoftwareApplication",
+              name: "Tobi AI",
+              applicationCategory: "BusinessApplication",
+              operatingSystem: "Web",
+              url: "https://t-obi.xyz/",
+              description: "Personal AI assistant for coding, debugging, deep research, interactive maps, and long-term memory.",
+              offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+            },
+          ],
+        }),
+      },
+    ],
   }),
 });
 
