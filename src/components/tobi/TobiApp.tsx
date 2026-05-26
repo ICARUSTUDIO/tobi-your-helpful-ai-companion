@@ -131,16 +131,18 @@ export function TobiApp() {
   const abortRef = useRef<AbortController | null>(null);
   const [pendingPrompt, setPendingPrompt] = useState<{ text: string; mode: "normal" | "research" } | null>(null);
 
-  // Load profile + facts when signed in
+  // Load profile + facts + recent convos when signed in
   useEffect(() => {
     if (!user) return;
     setProfileLoading(true);
-    Promise.all([fetchProfile(), fetchFacts().catch(() => [])]).then(([p, f]) => {
+    Promise.all([fetchProfile(), fetchFacts().catch(() => []), fetchConvos().catch(() => [])]).then(([p, f, c]) => {
       setProfile(p);
       setFacts((f as any[]).map((x) => x.fact));
+      setRecentConvos((c as any[]).slice(0, 5).map((x) => ({ id: x.id, title: x.title })));
       setProfileLoading(false);
     }).catch(() => setProfileLoading(false));
-  }, [user, fetchProfile, fetchFacts]);
+  }, [user, fetchProfile, fetchFacts, fetchConvos]);
+
 
   useEffect(() => {
     const saved = (typeof localStorage !== "undefined" && localStorage.getItem("tobi-theme")) as "dark" | "light" | null;
