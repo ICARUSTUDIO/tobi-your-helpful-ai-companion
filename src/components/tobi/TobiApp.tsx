@@ -93,6 +93,7 @@ export function TobiApp() {
 
   // Server fns
   const fetchProfile = useServerFn(getMyProfile);
+
   const saveProfile = useServerFn(updateMyProfile);
   const newConvo = useServerFn(createConversation);
   const saveMsg = useServerFn(saveMessage);
