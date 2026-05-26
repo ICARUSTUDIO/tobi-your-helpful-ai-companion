@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { Message } from "./Message";
 import { MapOverlay } from "./MapOverlay";
@@ -18,18 +18,73 @@ import {
   saveMessage,
   loadConversation,
   listFacts,
+  listConversations,
   renameConversation,
 } from "@/lib/conversations.functions";
 import { extractAndSaveFacts } from "@/lib/facts.functions";
 import { submitTrainingData } from "@/lib/training.functions";
 import { TrainTobiModal } from "./TrainTobiModal";
 
-const SUGGESTIONS = [
+const SUGGESTION_POOL: string[] = [
+  // Code
   "Write a Python function that debounces async calls",
-  "Find the best coffee shops in Lisbon",
-  "Check Reddit for the best mechanical keyboard under $100",
+  "Explain async/await like I'm five",
+  "Refactor this React component to use hooks",
+  "Write a SQL query to find duplicate rows",
+  "Generate a TypeScript type from this JSON",
+  "Set up a Vite + React + Tailwind starter",
+  // Debug
   "Debug: TypeError: Cannot read properties of undefined",
+  "Why is my useEffect running twice?",
+  "Help me read this stack trace",
+  "My Docker container exits immediately — why?",
+  // Research
+  "Compare Postgres vs MongoDB for a social app",
+  "Summarize the latest on AI regulation",
+  "What's new in React 19?",
+  "Pros and cons of monorepos in 2026",
+  "Explain CRDTs in plain English",
+  // Places / map
+  "Find the best coffee shops in Lisbon",
+  "Plan a 3-day trip to Tokyo",
+  "Quiet spots to work from in Berlin",
+  "Best ramen near Shibuya",
+  "Hidden-gem bookstores in NYC",
+  // Reddit / threads
+  "Check Reddit for the best mechanical keyboard under $100",
+  "What does r/personalfinance say about index funds?",
+  "Best budget noise-cancelling headphones — Reddit consensus",
+  // Life / fun
+  "Give me a 20-minute home workout",
+  "Suggest a weekend project I can finish in a day",
+  "Recommend a sci-fi book like Project Hail Mary",
+  "Help me write a polite 'no' to a meeting",
+  "Plan dinner for 4 with what's usually in my fridge",
 ];
+
+// Deterministic daily shuffle so suggestions feel fresh but stay stable through the day
+function dayHash(): number {
+  const d = new Date();
+  return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+}
+function mulberry32(seed: number) {
+  return function () {
+    let t = (seed += 0x6d2b79f5);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function pickDailySuggestions(pool: string[], count: number, salt = 0): string[] {
+  const rand = mulberry32(dayHash() + salt);
+  const copy = [...pool];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy.slice(0, count);
+}
+
 
 function uid() { return Math.random().toString(36).slice(2); }
 
@@ -38,15 +93,19 @@ export function TobiApp() {
 
   // Server fns
   const fetchProfile = useServerFn(getMyProfile);
+
   const saveProfile = useServerFn(updateMyProfile);
   const newConvo = useServerFn(createConversation);
   const saveMsg = useServerFn(saveMessage);
   const loadConvo = useServerFn(loadConversation);
   const fetchFacts = useServerFn(listFacts);
   const renameConvo = useServerFn(renameConversation);
+  const fetchConvos = useServerFn(listConversations);
   const extractFacts = useServerFn(extractAndSaveFacts);
   const submitTraining = useServerFn(submitTrainingData);
   const [trainPrompt, setTrainPrompt] = useState<null | { convoId: string | null; messages: ChatMessage[] }>(null);
+  const [recentConvos, setRecentConvos] = useState<{ id: string; title: string }[]>([]);
+
 
   const [profile, setProfile] = useState<any>(null);
   const [profileLoading, setProfileLoading] = useState(true);
@@ -72,16 +131,18 @@ export function TobiApp() {
   const abortRef = useRef<AbortController | null>(null);
   const [pendingPrompt, setPendingPrompt] = useState<{ text: string; mode: "normal" | "research" } | null>(null);
 
-  // Load profile + facts when signed in
+  // Load profile + facts + recent convos when signed in
   useEffect(() => {
     if (!user) return;
     setProfileLoading(true);
-    Promise.all([fetchProfile(), fetchFacts().catch(() => [])]).then(([p, f]) => {
+    Promise.all([fetchProfile(), fetchFacts().catch(() => []), fetchConvos().catch(() => [])]).then(([p, f, c]) => {
       setProfile(p);
       setFacts((f as any[]).map((x) => x.fact));
+      setRecentConvos((c as any[]).slice(0, 5).map((x) => ({ id: x.id, title: x.title })));
       setProfileLoading(false);
     }).catch(() => setProfileLoading(false));
-  }, [user, fetchProfile, fetchFacts]);
+  }, [user, fetchProfile, fetchFacts, fetchConvos]);
+
 
   useEffect(() => {
     const saved = (typeof localStorage !== "undefined" && localStorage.getItem("tobi-theme")) as "dark" | "light" | null;
@@ -399,10 +460,35 @@ export function TobiApp() {
                 </p>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-xl mx-auto pt-4">
-                {SUGGESTIONS.map((s) => (
-                  <button key={s} onClick={() => setInput(s)} className="text-left rounded-xl border border-border bg-card/60 backdrop-blur px-4 py-3 text-sm hover:border-tobi/50 hover:bg-card transition">{s}</button>
-                ))}
+                {(() => {
+                  const continueConvo = recentConvos.find((c) => c.id !== conversationId && c.title && c.title.toLowerCase() !== "new chat");
+                  const promptCount = continueConvo ? 3 : 4;
+                  const prompts = pickDailySuggestions(SUGGESTION_POOL, promptCount);
+                  const tiles: ReactNode[] = prompts.map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => setInput(s)}
+                      className="text-left rounded-xl border border-border bg-card/60 backdrop-blur px-4 py-3 text-sm hover:border-tobi/50 hover:bg-card transition"
+                    >
+                      {s}
+                    </button>
+                  ));
+                  if (continueConvo) {
+                    tiles.push(
+                      <button
+                        key={`continue-${continueConvo.id}`}
+                        onClick={() => selectConversation(continueConvo.id)}
+                        className="text-left rounded-xl border border-tobi/40 bg-tobi/10 backdrop-blur px-4 py-3 text-sm hover:border-tobi hover:bg-tobi/15 transition"
+                      >
+                        <div className="text-[10px] uppercase tracking-wider text-tobi/80 mb-0.5">Continue</div>
+                        <div className="truncate">{continueConvo.title}</div>
+                      </button>,
+                    );
+                  }
+                  return tiles;
+                })()}
               </div>
+
             </div>
           ) : (
             messages.map((m, i) => {
