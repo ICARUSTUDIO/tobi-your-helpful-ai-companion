@@ -415,9 +415,10 @@ export function TobiApp() {
       <div className="pointer-events-none absolute -bottom-40 -right-40 size-[600px] rounded-full opacity-15" style={{ background: "radial-gradient(circle, oklch(0.55 0.22 270), transparent 60%)" }} />
 
       <header className="relative z-10 flex items-center justify-between px-6 py-4 border-b border-border/60 backdrop-blur-sm">
+        <h1 className="sr-only">Tobi AI chat</h1>
         <div className="flex items-center gap-2">
-          <button onClick={() => setHistoryOpen(true)} className="size-9 grid place-items-center rounded-xl border border-border bg-card/60 hover:bg-card transition" title="Chats">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          <button onClick={() => setHistoryOpen(true)} aria-label="Open chat history" className="size-9 grid place-items-center rounded-xl border border-border bg-card/60 hover:bg-card transition" title="Chats">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
           </button>
           <TobiLogo className="size-9 rounded-xl" markClassName="size-7" />
           <div>
@@ -445,13 +446,13 @@ export function TobiApp() {
             <div className="pt-12 text-center space-y-6">
               <TobiLogo className="mx-auto size-20 rounded-3xl" markClassName="size-14" />
               <div>
-                <h1 className="font-display text-3xl font-semibold tracking-tight">
+                <p className="font-display text-3xl font-semibold tracking-tight">
                   {isBirthday && profile?.name
                     ? `🎉 Happy birthday, ${profile.name}!`
                     : profile?.name
                       ? `Yo ${profile.name}, what's good?`
                       : "Hey, I'm Tobi."}
-                </h1>
+                </p>
                 {isBirthday && (
                   <p className="mt-2 text-tobi text-sm font-medium">Wishing you the best one yet — go enjoy your day, I got the work covered. 🎂</p>
                 )}
@@ -526,11 +527,14 @@ export function TobiApp() {
             </div>
           )}
           <div className={`rounded-2xl border bg-card/80 backdrop-blur p-2 transition ${research ? "border-tobi/60 glow-ring" : "border-border"}`}>
+            <label htmlFor="tobi-message-input" className="sr-only">Message Tobi</label>
             <textarea
+              id="tobi-message-input"
               ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={onKey}
+              aria-label="Message Tobi"
               placeholder={research ? "Ask Tobi for a deep dive…" : "Ask Tobi anything…"}
               rows={1}
               className="w-full resize-none bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted-foreground max-h-40"
