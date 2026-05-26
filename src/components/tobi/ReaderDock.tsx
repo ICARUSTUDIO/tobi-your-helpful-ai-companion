@@ -6,6 +6,7 @@ import type { RedditPost } from "./types";
 
 type Mode = "expanded" | "docked" | "hidden";
 const PAGE = 5;
+const VOICE_LABEL = "Luna · Deepgram";
 
 interface Props {
   post: RedditPost;
@@ -16,7 +17,7 @@ interface Props {
 function useTTS() {
   const [speaking, setSpeaking] = useState(false);
   const [paused, setPaused] = useState(false);
-  const [voiceName] = useState<string>("Aria · ElevenLabs");
+  const [voiceName] = useState<string>(VOICE_LABEL);
   const [intensity, setIntensity] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -325,7 +326,7 @@ export function ReaderDock({ post, summary, onClose }: Props) {
             <>
               <button onClick={tts.paused ? tts.resume : tts.pause} className="rounded-full border border-tobi/60 px-3 py-1.5 text-xs hover:bg-tobi/10">{tts.paused ? "Resume" : "Pause"}</button>
               <button onClick={tts.stop} className="rounded-full border border-border px-3 py-1.5 text-xs hover:bg-muted">Stop</button>
-              <span className="text-[10px] text-muted-foreground ml-1 truncate">{tts.paused ? "Paused" : `Reading slowly · ${tts.voiceName}`}</span>
+              <span className="text-[10px] text-muted-foreground ml-1 truncate">{tts.paused ? "Paused" : `Reading · ${tts.voiceName}`}</span>
             </>
           )}
           <a href={post.url} target="_blank" rel="noreferrer" className="ml-auto text-[11px] text-tobi hover:underline">Open original ↗</a>
