@@ -100,9 +100,12 @@ export function TobiApp() {
   const loadConvo = useServerFn(loadConversation);
   const fetchFacts = useServerFn(listFacts);
   const renameConvo = useServerFn(renameConversation);
+  const fetchConvos = useServerFn(listConversations);
   const extractFacts = useServerFn(extractAndSaveFacts);
   const submitTraining = useServerFn(submitTrainingData);
   const [trainPrompt, setTrainPrompt] = useState<null | { convoId: string | null; messages: ChatMessage[] }>(null);
+  const [recentConvos, setRecentConvos] = useState<{ id: string; title: string }[]>([]);
+
 
   const [profile, setProfile] = useState<any>(null);
   const [profileLoading, setProfileLoading] = useState(true);
