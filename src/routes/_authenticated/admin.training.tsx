@@ -97,7 +97,7 @@ function AdminTrainingPage() {
       <div className="min-h-screen bg-slate-950 text-slate-300 grid place-items-center">
         <div className="text-center space-y-3">
           <div className="text-2xl font-semibold">Admins only</div>
-          <Link to="/" className="text-sm text-sky-400 hover:underline">← Back to Tobi</Link>
+          <Link to="/app" className="text-sm text-sky-400 hover:underline">← Back to Tobi</Link>
         </div>
       </div>
     );
@@ -127,7 +127,7 @@ function AdminTrainingPage() {
           </button>
         </nav>
         <div className="p-3 border-t border-slate-800">
-          <Link to="/" className="block text-xs text-slate-500 hover:text-slate-300 px-3 py-2">← Back to Tobi</Link>
+          <Link to="/app" className="block text-xs text-slate-500 hover:text-slate-300 px-3 py-2">← Back to Tobi</Link>
         </div>
       </aside>
 

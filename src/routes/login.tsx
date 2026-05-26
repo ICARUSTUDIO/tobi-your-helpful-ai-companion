@@ -7,7 +7,7 @@ import { TobiLogo } from "@/components/tobi/TobiLogo";
 export const Route = createFileRoute("/login")({
   beforeLoad: async () => {
     const { data } = await supabase.auth.getSession();
-    if (data.session) throw redirect({ to: "/" });
+    if (data.session) throw redirect({ to: "/app" });
   },
   component: LoginPage,
   head: () => ({ meta: [{ title: "Sign in to Tobi" }] }),
@@ -24,7 +24,7 @@ function LoginPage() {
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => {
-      if (s) navigate({ to: "/" });
+      if (s) navigate({ to: "/app" });
     });
     return () => subscription.unsubscribe();
   }, [navigate]);
