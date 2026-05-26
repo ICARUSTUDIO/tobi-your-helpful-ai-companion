@@ -16,16 +16,13 @@ interface Props {
 function useTTS() {
   const [speaking, setSpeaking] = useState(false);
   const [paused, setPaused] = useState(false);
-  const [voiceName, setVoiceName] = useState<string>("Andromeda · Deepgram");
+  const [voiceName] = useState<string>("Aria · ElevenLabs");
   const [intensity, setIntensity] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
   const rafRef = useRef<number | null>(null);
   const cancelledRef = useRef(false);
   const pausedRef = useRef(false);
   const onDoneRef = useRef<(() => void) | null>(null);
-  const usingBrowserRef = useRef(false);
 
   useEffect(() => () => { hardStop(); }, []);
 
@@ -36,45 +33,29 @@ function useTTS() {
 
   function hardStop() {
     cancelledRef.current = true;
-    try { audioRef.current?.pause(); } catch {}
+    const a = audioRef.current;
+    if (a) {
+      try { a.pause(); a.src = ""; a.load(); } catch {}
+    }
     audioRef.current = null;
-    try { window.speechSynthesis?.cancel(); } catch {}
     stopRaf();
     setIntensity(0);
     setSpeaking(false);
     setPaused(false);
   }
 
-  function startAnalyser(audio: HTMLAudioElement) {
-    try {
-      if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const ctx = audioCtxRef.current;
-      const src = ctx.createMediaElementSource(audio);
-      const analyser = ctx.createAnalyser();
-      analyser.fftSize = 256;
-      src.connect(analyser);
-      analyser.connect(ctx.destination);
-      analyserRef.current = analyser;
-      const buf = new Uint8Array(analyser.frequencyBinCount);
-      const tick = () => {
-        analyser.getByteFrequencyData(buf);
-        let sum = 0;
-        for (let i = 0; i < buf.length; i++) sum += buf[i];
-        const avg = sum / buf.length / 255;
-        setIntensity(Math.min(1, avg * 2.2));
-        rafRef.current = requestAnimationFrame(tick);
-      };
+  function startFakeAnalyser() {
+    let t = 0;
+    const tick = () => {
+      t += 0.12;
+      const base = 0.35 + Math.sin(t) * 0.18 + Math.sin(t * 2.3) * 0.12;
+      setIntensity(Math.max(0.1, Math.min(1, base + Math.random() * 0.15)));
       rafRef.current = requestAnimationFrame(tick);
-    } catch {
-      const tick = () => {
-        setIntensity(0.35 + Math.random() * 0.55);
-        rafRef.current = requestAnimationFrame(tick);
-      };
-      rafRef.current = requestAnimationFrame(tick);
-    }
+    };
+    rafRef.current = requestAnimationFrame(tick);
   }
 
-  async function playDeepgram(text: string): Promise<boolean> {
+  async function playOne(text: string): Promise<boolean> {
     const res = await fetch("/api/tts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -85,22 +66,20 @@ function useTTS() {
     if (cancelledRef.current) return false;
     const url = URL.createObjectURL(blob);
     const audio = new Audio(url);
-    audio.playbackRate = 0.92; // gentler pacing
+    audio.preload = "auto";
     audioRef.current = audio;
-    startAnalyser(audio);
     try {
-      if (pausedRef.current) {
-        // user hit pause between chunks — don't auto-start
-      } else {
-        await audio.play();
-      }
+      if (!pausedRef.current) await audio.play();
+      startFakeAnalyser();
     } catch { URL.revokeObjectURL(url); return false; }
     return await new Promise<boolean>((resolve) => {
-      audio.onended = () => { stopRaf(); URL.revokeObjectURL(url); resolve(true); };
-      audio.onerror = () => { stopRaf(); URL.revokeObjectURL(url); resolve(false); };
-      audio.onpause = () => {
-        if (cancelledRef.current) { URL.revokeObjectURL(url); resolve(false); }
+      const cleanup = () => { stopRaf(); URL.revokeObjectURL(url); };
+      audio.onended = () => { cleanup(); resolve(true); };
+      audio.onerror = () => { cleanup(); resolve(false); };
+      const checkCancel = () => {
+        if (cancelledRef.current) { cleanup(); resolve(false); }
       };
+      audio.onpause = checkCancel;
     });
   }
 
@@ -110,13 +89,11 @@ function useTTS() {
     pausedRef.current = false;
     onDoneRef.current = onDone || null;
     setSpeaking(true);
-    usingBrowserRef.current = false;
-    setVoiceName("Andromeda · Deepgram");
 
     for (let i = 0; i < chunks.length; i++) {
       if (cancelledRef.current) return;
       let ok = false;
-      try { ok = await playDeepgram(chunks[i]); } catch { ok = false; }
+      try { ok = await playOne(chunks[i]); } catch { ok = false; }
       if (cancelledRef.current) return;
       if (!ok) {
         setSpeaking(false);
@@ -132,18 +109,24 @@ function useTTS() {
 
   function pause() {
     pausedRef.current = true;
-    try { audioRef.current?.pause(); } catch {}
+    const a = audioRef.current;
+    if (a) { try { a.pause(); } catch {} }
+    stopRaf();
     setPaused(true);
   }
   function resume() {
     pausedRef.current = false;
-    audioRef.current?.play().catch(() => {});
+    const a = audioRef.current;
+    if (a) {
+      a.play().then(() => startFakeAnalyser()).catch(() => {});
+    }
     setPaused(false);
   }
   function stop() { hardStop(); onDoneRef.current = null; }
 
   return { speaking, paused, voiceName, intensity, speak, pause, resume, stop };
 }
+
 
 function chunkText(s: string, max = 1200): string[] {
   const clean = s.replace(/\s+/g, " ").trim();
