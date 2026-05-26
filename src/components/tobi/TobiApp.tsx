@@ -464,7 +464,7 @@ export function TobiApp() {
                   const continueConvo = recentConvos.find((c) => c.id !== conversationId && c.title && c.title.toLowerCase() !== "new chat");
                   const promptCount = continueConvo ? 3 : 4;
                   const prompts = pickDailySuggestions(SUGGESTION_POOL, promptCount);
-                  const tiles: React.ReactNode[] = prompts.map((s) => (
+                  const tiles: ReactNode[] = prompts.map((s) => (
                     <button
                       key={s}
                       onClick={() => setInput(s)}
