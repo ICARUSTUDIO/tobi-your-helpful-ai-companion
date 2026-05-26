@@ -2,7 +2,16 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/privacy")({
   component: PrivacyPage,
-  head: () => ({ meta: [{ title: "Privacy Policy — Tobi" }] }),
+  head: () => ({
+    meta: [
+      { title: "Privacy Policy — Tobi AI" },
+      { name: "description", content: "How Tobi AI collects, uses, and protects your account data, conversations, and memory facts. Read the full privacy policy." },
+      { property: "og:title", content: "Privacy Policy — Tobi AI" },
+      { property: "og:description", content: "How Tobi AI handles your account, chats, and memory data." },
+      { property: "og:url", content: "https://t-obi.xyz/privacy" },
+    ],
+    links: [{ rel: "canonical", href: "https://t-obi.xyz/privacy" }],
+  }),
 });
 
 function PrivacyPage() {
