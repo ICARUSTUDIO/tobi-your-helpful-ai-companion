@@ -16,7 +16,7 @@ interface Props {
 function useTTS() {
   const [speaking, setSpeaking] = useState(false);
   const [paused, setPaused] = useState(false);
-  const [voiceName, setVoiceName] = useState<string>("Sarah · ElevenLabs");
+  const [voiceName, setVoiceName] = useState<string>("Thalia · Deepgram");
   const [intensity, setIntensity] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -96,37 +96,13 @@ function useTTS() {
     });
   }
 
-  function speakBrowser(chunks: string[], onDone?: () => void) {
-    usingBrowserRef.current = true;
-    if (typeof window === "undefined" || !window.speechSynthesis) { onDone?.(); return; }
-    window.speechSynthesis.cancel();
-    const voices = window.speechSynthesis.getVoices();
-    const v = voices.find((x) => /samantha|ava|natural|premium|neural|google us english|microsoft aria/i.test(x.name))
-      || voices.find((x) => /^en/i.test(x.lang)) || voices[0];
-    if (v) setVoiceName(`${v.name} · browser`);
-    const fake = () => {
-      setIntensity(0.4 + Math.random() * 0.55);
-      rafRef.current = requestAnimationFrame(fake);
-    };
-    rafRef.current = requestAnimationFrame(fake);
-    chunks.forEach((text, i) => {
-      const u = new SpeechSynthesisUtterance(text);
-      if (v) u.voice = v;
-      u.rate = 1.02; u.pitch = 1.0;
-      if (i === chunks.length - 1) {
-        u.onend = () => { stopRaf(); setSpeaking(false); setPaused(false); setIntensity(0); onDone?.(); };
-      }
-      window.speechSynthesis.speak(u);
-    });
-  }
-
   async function speak(chunks: string[], onDone?: () => void) {
     hardStop();
     cancelledRef.current = false;
     onDoneRef.current = onDone || null;
     setSpeaking(true);
     usingBrowserRef.current = false;
-    setVoiceName("Sarah · ElevenLabs");
+    setVoiceName("Thalia · Deepgram");
 
     for (let i = 0; i < chunks.length; i++) {
       if (cancelledRef.current) return;
@@ -134,7 +110,9 @@ function useTTS() {
       try { ok = await playElevenLabs(chunks[i]); } catch { ok = false; }
       if (cancelledRef.current) return;
       if (!ok) {
-        speakBrowser(chunks.slice(i), () => onDoneRef.current?.());
+        setSpeaking(false);
+        setIntensity(0);
+        onDoneRef.current?.();
         return;
       }
     }

@@ -3,7 +3,7 @@ import { z } from "zod";
 
 const Body = z.object({
   text: z.string().min(1).max(4500),
-  voice_id: z.string().min(1).max(80).default("aura-2-asteria-en"),
+  voice_id: z.string().min(1).max(80).default("aura-2-thalia-en"),
 });
 
 export const Route = createFileRoute("/api/tts")({
