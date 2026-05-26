@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { Message } from "./Message";
-import { MapOverlay } from "./MapOverlay";
+const MapOverlay = lazy(() => import("./MapOverlay").then((m) => ({ default: m.MapOverlay })));
 import { ReaderDock } from "./ReaderDock";
 import { DevConsole, type DevLog } from "./DevConsole";
 import { parseDocument } from "./parseDoc";
@@ -590,7 +590,9 @@ export function TobiApp() {
       </footer>
 
       {mapView && (
-        <MapOverlay places={mapView.places} summary={mapView.summary} onClose={() => setMapView(null)} />
+        <Suspense fallback={<div className="absolute inset-0 z-30 bg-background/80 backdrop-blur flex items-center justify-center text-sm text-muted-foreground">Loading map…</div>}>
+          <MapOverlay places={mapView.places} summary={mapView.summary} onClose={() => setMapView(null)} />
+        </Suspense>
       )}
       {reader && (
         <ReaderDock post={reader.post} summary={reader.summary} onClose={() => setReader(null)} />
