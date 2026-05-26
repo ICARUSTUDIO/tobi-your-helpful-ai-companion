@@ -16,13 +16,14 @@ interface Props {
 function useTTS() {
   const [speaking, setSpeaking] = useState(false);
   const [paused, setPaused] = useState(false);
-  const [voiceName, setVoiceName] = useState<string>("Thalia · Deepgram");
+  const [voiceName, setVoiceName] = useState<string>("Andromeda · Deepgram");
   const [intensity, setIntensity] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const rafRef = useRef<number | null>(null);
   const cancelledRef = useRef(false);
+  const pausedRef = useRef(false);
   const onDoneRef = useRef<(() => void) | null>(null);
   const usingBrowserRef = useRef(false);
 
@@ -73,7 +74,7 @@ function useTTS() {
     }
   }
 
-  async function playElevenLabs(text: string): Promise<boolean> {
+  async function playDeepgram(text: string): Promise<boolean> {
     const res = await fetch("/api/tts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -84,9 +85,16 @@ function useTTS() {
     if (cancelledRef.current) return false;
     const url = URL.createObjectURL(blob);
     const audio = new Audio(url);
+    audio.playbackRate = 0.92; // gentler pacing
     audioRef.current = audio;
     startAnalyser(audio);
-    try { await audio.play(); } catch { URL.revokeObjectURL(url); return false; }
+    try {
+      if (pausedRef.current) {
+        // user hit pause between chunks — don't auto-start
+      } else {
+        await audio.play();
+      }
+    } catch { URL.revokeObjectURL(url); return false; }
     return await new Promise<boolean>((resolve) => {
       audio.onended = () => { stopRaf(); URL.revokeObjectURL(url); resolve(true); };
       audio.onerror = () => { stopRaf(); URL.revokeObjectURL(url); resolve(false); };
@@ -99,15 +107,16 @@ function useTTS() {
   async function speak(chunks: string[], onDone?: () => void) {
     hardStop();
     cancelledRef.current = false;
+    pausedRef.current = false;
     onDoneRef.current = onDone || null;
     setSpeaking(true);
     usingBrowserRef.current = false;
-    setVoiceName("Thalia · Deepgram");
+    setVoiceName("Andromeda · Deepgram");
 
     for (let i = 0; i < chunks.length; i++) {
       if (cancelledRef.current) return;
       let ok = false;
-      try { ok = await playElevenLabs(chunks[i]); } catch { ok = false; }
+      try { ok = await playDeepgram(chunks[i]); } catch { ok = false; }
       if (cancelledRef.current) return;
       if (!ok) {
         setSpeaking(false);
@@ -122,13 +131,13 @@ function useTTS() {
   }
 
   function pause() {
-    if (usingBrowserRef.current) window.speechSynthesis?.pause();
-    else audioRef.current?.pause();
+    pausedRef.current = true;
+    try { audioRef.current?.pause(); } catch {}
     setPaused(true);
   }
   function resume() {
-    if (usingBrowserRef.current) window.speechSynthesis?.resume();
-    else audioRef.current?.play().catch(() => {});
+    pausedRef.current = false;
+    audioRef.current?.play().catch(() => {});
     setPaused(false);
   }
   function stop() { hardStop(); onDoneRef.current = null; }
