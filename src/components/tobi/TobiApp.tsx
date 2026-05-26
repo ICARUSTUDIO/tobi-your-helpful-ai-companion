@@ -18,18 +18,73 @@ import {
   saveMessage,
   loadConversation,
   listFacts,
+  listConversations,
   renameConversation,
 } from "@/lib/conversations.functions";
 import { extractAndSaveFacts } from "@/lib/facts.functions";
 import { submitTrainingData } from "@/lib/training.functions";
 import { TrainTobiModal } from "./TrainTobiModal";
 
-const SUGGESTIONS = [
+const SUGGESTION_POOL: string[] = [
+  // Code
   "Write a Python function that debounces async calls",
-  "Find the best coffee shops in Lisbon",
-  "Check Reddit for the best mechanical keyboard under $100",
+  "Explain async/await like I'm five",
+  "Refactor this React component to use hooks",
+  "Write a SQL query to find duplicate rows",
+  "Generate a TypeScript type from this JSON",
+  "Set up a Vite + React + Tailwind starter",
+  // Debug
   "Debug: TypeError: Cannot read properties of undefined",
+  "Why is my useEffect running twice?",
+  "Help me read this stack trace",
+  "My Docker container exits immediately — why?",
+  // Research
+  "Compare Postgres vs MongoDB for a social app",
+  "Summarize the latest on AI regulation",
+  "What's new in React 19?",
+  "Pros and cons of monorepos in 2026",
+  "Explain CRDTs in plain English",
+  // Places / map
+  "Find the best coffee shops in Lisbon",
+  "Plan a 3-day trip to Tokyo",
+  "Quiet spots to work from in Berlin",
+  "Best ramen near Shibuya",
+  "Hidden-gem bookstores in NYC",
+  // Reddit / threads
+  "Check Reddit for the best mechanical keyboard under $100",
+  "What does r/personalfinance say about index funds?",
+  "Best budget noise-cancelling headphones — Reddit consensus",
+  // Life / fun
+  "Give me a 20-minute home workout",
+  "Suggest a weekend project I can finish in a day",
+  "Recommend a sci-fi book like Project Hail Mary",
+  "Help me write a polite 'no' to a meeting",
+  "Plan dinner for 4 with what's usually in my fridge",
 ];
+
+// Deterministic daily shuffle so suggestions feel fresh but stay stable through the day
+function dayHash(): number {
+  const d = new Date();
+  return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+}
+function mulberry32(seed: number) {
+  return function () {
+    let t = (seed += 0x6d2b79f5);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function pickDailySuggestions(pool: string[], count: number, salt = 0): string[] {
+  const rand = mulberry32(dayHash() + salt);
+  const copy = [...pool];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy.slice(0, count);
+}
+
 
 function uid() { return Math.random().toString(36).slice(2); }
 
