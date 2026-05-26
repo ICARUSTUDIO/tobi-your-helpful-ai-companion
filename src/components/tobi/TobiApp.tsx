@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { Message } from "./Message";
-import { MapOverlay } from "./MapOverlay";
+const MapOverlay = lazy(() => import("./MapOverlay").then((m) => ({ default: m.MapOverlay })));
 import { ReaderDock } from "./ReaderDock";
 import { DevConsole, type DevLog } from "./DevConsole";
 import { parseDocument } from "./parseDoc";
