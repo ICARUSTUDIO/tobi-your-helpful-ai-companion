@@ -13,11 +13,17 @@ export const Route = createFileRoute("/api/tts")({
         const json = await request.json().catch(() => null);
         const parsed = Body.safeParse(json);
         if (!parsed.success) {
-          return new Response(JSON.stringify({ error: "Invalid input" }), { status: 400, headers: { "Content-Type": "application/json" } });
+          return new Response(JSON.stringify({ error: "Invalid input" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          });
         }
         const apiKey = process.env.ELEVENLABS_API_KEY;
         if (!apiKey) {
-          return new Response(JSON.stringify({ error: "no_key" }), { status: 503, headers: { "Content-Type": "application/json" } });
+          return new Response(JSON.stringify({ error: "no_key" }), {
+            status: 503,
+            headers: { "Content-Type": "application/json" },
+          });
         }
         const { text, voice } = parsed.data;
         const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice}/stream`, {
@@ -41,7 +47,10 @@ export const Route = createFileRoute("/api/tts")({
         if (!res.ok) {
           const err = await res.text();
           console.error("[tts] elevenlabs failed", res.status, err.slice(0, 300));
-          return new Response(JSON.stringify({ error: "tts_failed", status: res.status }), { status: res.status, headers: { "Content-Type": "application/json" } });
+          return new Response(JSON.stringify({ error: "tts_failed", status: res.status }), {
+            status: res.status,
+            headers: { "Content-Type": "application/json" },
+          });
         }
         return new Response(res.body, {
           status: 200,

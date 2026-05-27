@@ -202,15 +202,17 @@ function useTTS() {
   return { speaking, paused, voiceName, intensity, speak, pause, resume, stop };
 }
 
-
 function chunkText(s: string, max = 1200): string[] {
   const clean = s.replace(/\s+/g, " ").trim();
   if (clean.length <= max) return [clean];
   const sents = clean.split(/(?<=[.!?])\s+/);
-  const out: string[] = []; let buf = "";
+  const out: string[] = [];
+  let buf = "";
   for (const x of sents) {
-    if ((buf + " " + x).length > max) { if (buf) out.push(buf); buf = x; }
-    else buf = buf ? buf + " " + x : x;
+    if ((buf + " " + x).length > max) {
+      if (buf) out.push(buf);
+      buf = x;
+    } else buf = buf ? buf + " " + x : x;
   }
   if (buf) out.push(buf);
   return out;
@@ -264,11 +266,14 @@ export function ReaderDock({ post, summary, onClose }: Props) {
   }
 
   function listenComments(from = 0, count = PAGE) {
-    setAskComments(false); setAskMore(false);
+    setAskComments(false);
+    setAskMore(false);
     const slice = post.comments.slice(from, from + count);
     if (slice.length === 0) return;
     setShown(Math.max(shown, from + count));
-    const text = slice.map((c, i) => `Comment ${from + i + 1}. ${c.author} said: ${c.body}`).join(" ... ");
+    const text = slice
+      .map((c, i) => `Comment ${from + i + 1}. ${c.author} said: ${c.body}`)
+      .join(" ... ");
     tts.speak(chunkText(text), () => {
       const next = from + count;
       if (next < totalComments) setAskMore(true);
@@ -279,12 +284,18 @@ export function ReaderDock({ post, summary, onClose }: Props) {
     const needle = q.toLowerCase();
     const hit = post.comments.findIndex((c) => c.body.toLowerCase().includes(needle));
     if (hit === -1) {
-      addNote(`I searched all ${totalComments} loaded comments for "${q}" — no match. Want me to load more from Reddit?`);
+      addNote(
+        `I searched all ${totalComments} loaded comments for "${q}" — no match. Want me to load more from Reddit?`,
+      );
     } else {
       setShown(Math.max(shown, hit + 1));
-      addNote(`Found it in comment ${hit + 1} by **${post.comments[hit].author}**: "${post.comments[hit].body.slice(0, 200)}${post.comments[hit].body.length > 200 ? "…" : ""}"`);
+      addNote(
+        `Found it in comment ${hit + 1} by **${post.comments[hit].author}**: "${post.comments[hit].body.slice(0, 200)}${post.comments[hit].body.length > 200 ? "…" : ""}"`,
+      );
       setTimeout(() => {
-        document.getElementById(`tobi-cmt-${post.comments[hit].id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+        document
+          .getElementById(`tobi-cmt-${post.comments[hit].id}`)
+          ?.scrollIntoView({ behavior: "smooth", block: "center" });
       }, 50);
     }
   }
@@ -294,14 +305,25 @@ export function ReaderDock({ post, summary, onClose }: Props) {
   }
 
   function handleFollowUp() {
-    const t = followUp.trim(); if (!t) return;
+    const t = followUp.trim();
+    if (!t) return;
     setFollowUp("");
     addNote(`**You:** ${t}`);
     // Smart local intent: search / read more / stop
     const low = t.toLowerCase();
-    if (/(stop|pause)/.test(low)) { tts.stop(); addNote("_Stopped reading._"); return; }
-    if (/(resume|continue)/.test(low) && tts.paused) { tts.resume(); return; }
-    if (/(more comment|next comment|read more)/.test(low)) { listenComments(shown, PAGE); return; }
+    if (/(stop|pause)/.test(low)) {
+      tts.stop();
+      addNote("_Stopped reading._");
+      return;
+    }
+    if (/(resume|continue)/.test(low) && tts.paused) {
+      tts.resume();
+      return;
+    }
+    if (/(more comment|next comment|read more)/.test(low)) {
+      listenComments(shown, PAGE);
+      return;
+    }
     if (/(find|search|look for|comment about|mention)/.test(low)) {
       const m = t.match(/(?:find|search|look for|about|mention(?:s|ing)?)\s+(.+)/i);
       const q = m?.[1]?.replace(/[?.!]$/, "").trim() || t;
@@ -331,19 +353,43 @@ export function ReaderDock({ post, summary, onClose }: Props) {
         >
           <span
             className={`size-2 rounded-full ${tts.speaking ? "bg-green-400" : "bg-muted-foreground"}`}
-            style={tts.speaking ? { transform: `scale(${1 + i * 0.8})`, transition: "transform 80ms linear" } : undefined}
+            style={
+              tts.speaking
+                ? { transform: `scale(${1 + i * 0.8})`, transition: "transform 80ms linear" }
+                : undefined
+            }
           />
           <div className="text-left min-w-0">
-            <div className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: tts.speaking ? "rgb(34, 197, 94)" : undefined }}>Thinking cap</div>
+            <div
+              className="text-[10px] uppercase tracking-wider font-semibold"
+              style={{ color: tts.speaking ? "rgb(34, 197, 94)" : undefined }}
+            >
+              Thinking cap
+            </div>
             <div className="text-xs text-foreground truncate max-w-[220px]">{post.title}</div>
           </div>
         </button>
         {askMore && (
           <div className="mt-2 rounded-2xl bg-card/95 backdrop-blur-xl border border-tobi/50 p-3 shadow-2xl glow-ring">
-            <p className="text-xs text-foreground/90">Done with that batch. Want me to read the next 5 comments?</p>
+            <p className="text-xs text-foreground/90">
+              Done with that batch. Want me to read the next 5 comments?
+            </p>
             <div className="mt-2 flex gap-2">
-              <button onClick={() => { setMode("expanded"); listenComments(shown, PAGE); }} className="flex-1 rounded-full bg-tobi text-primary-foreground text-xs font-semibold py-1.5 hover:opacity-90">Yes, keep going</button>
-              <button onClick={() => setAskMore(false)} className="rounded-full border border-border text-xs px-3 py-1.5 hover:bg-card">Later</button>
+              <button
+                onClick={() => {
+                  setMode("expanded");
+                  listenComments(shown, PAGE);
+                }}
+                className="flex-1 rounded-full bg-tobi text-primary-foreground text-xs font-semibold py-1.5 hover:opacity-90"
+              >
+                Yes, keep going
+              </button>
+              <button
+                onClick={() => setAskMore(false)}
+                className="rounded-full border border-border text-xs px-3 py-1.5 hover:bg-card"
+              >
+                Later
+              </button>
             </div>
           </div>
         )}
@@ -354,20 +400,37 @@ export function ReaderDock({ post, summary, onClose }: Props) {
   return (
     <>
       {showTutorial && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-background/70 backdrop-blur-sm animate-in fade-in" onClick={() => setShowTutorial(false)}>
-          <div className="max-w-md mx-4 rounded-3xl bg-card border border-tobi/40 p-6 shadow-2xl glow-ring" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-background/70 backdrop-blur-sm animate-in fade-in"
+          onClick={() => setShowTutorial(false)}
+        >
+          <div
+            className="max-w-md mx-4 rounded-3xl bg-card border border-tobi/40 p-6 shadow-2xl glow-ring"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center gap-3">
               <TobiLogo className="size-10 rounded-2xl" markClassName="size-8" />
               <div className="font-display text-lg font-semibold">Meet the Listen button</div>
             </div>
             <p className="mt-4 text-sm text-foreground/85 leading-relaxed">
-              Hit <b>Listen</b> and I'll read you <b>my take</b> on this thread — not the raw post, just the summary I wrote.
-              When I'm done, I'll offer to read the top comments too. You can minimize this panel and keep chatting;
-              I'll ping you from the top-right when I need an answer.
+              Hit <b>Listen</b> and I'll read you <b>my take</b> on this thread — not the raw post,
+              just the summary I wrote. When I'm done, I'll offer to read the top comments too. You
+              can minimize this panel and keep chatting; I'll ping you from the top-right when I
+              need an answer.
             </p>
             <div className="mt-5 flex justify-end gap-2">
-              <button onClick={() => setShowTutorial(false)} className="rounded-full border border-border px-4 py-1.5 text-xs hover:bg-muted">Maybe later</button>
-              <button onClick={startListening} className="rounded-full bg-tobi text-primary-foreground px-4 py-1.5 text-xs font-semibold hover:opacity-90">Got it, start listening</button>
+              <button
+                onClick={() => setShowTutorial(false)}
+                className="rounded-full border border-border px-4 py-1.5 text-xs hover:bg-muted"
+              >
+                Maybe later
+              </button>
+              <button
+                onClick={startListening}
+                className="rounded-full bg-tobi text-primary-foreground px-4 py-1.5 text-xs font-semibold hover:opacity-90"
+              >
+                Got it, start listening
+              </button>
             </div>
           </div>
         </div>
@@ -377,40 +440,99 @@ export function ReaderDock({ post, summary, onClose }: Props) {
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-background/40">
           <div className="flex items-center gap-2 min-w-0">
-            <span className={`size-2 rounded-full ${tts.speaking ? "bg-tobi animate-pulse" : "bg-tobi/50"}`} />
+            <span
+              className={`size-2 rounded-full ${tts.speaking ? "bg-tobi animate-pulse" : "bg-tobi/50"}`}
+            />
             <div className="min-w-0">
-              <div className="text-[10px] uppercase tracking-wider text-tobi font-semibold">Thinking cap · {post.source === "reddit" ? `r/${post.subreddit}` : post.source}</div>
-              <div className="text-xs text-muted-foreground truncate">{post.source === "reddit" ? `by u/${post.author}` : post.subreddit || post.author} · {post.numComments ?? totalComments} replies</div>
+              <div className="text-[10px] uppercase tracking-wider text-tobi font-semibold">
+                Thinking cap · {post.source === "reddit" ? `r/${post.subreddit}` : post.source}
+              </div>
+              <div className="text-xs text-muted-foreground truncate">
+                {post.source === "reddit" ? `by u/${post.author}` : post.subreddit || post.author} ·{" "}
+                {post.numComments ?? totalComments} replies
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            <button onClick={() => setMode("docked")} title="Minimize" className="rounded-full size-7 grid place-items-center text-muted-foreground hover:bg-muted hover:text-foreground">–</button>
-            <button onClick={() => { tts.stop(); onClose(); }} title="Close" className="rounded-full size-7 grid place-items-center text-muted-foreground hover:bg-muted hover:text-foreground">×</button>
+            <button
+              onClick={() => setMode("docked")}
+              title="Minimize"
+              className="rounded-full size-7 grid place-items-center text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              –
+            </button>
+            <button
+              onClick={() => {
+                tts.stop();
+                onClose();
+              }}
+              title="Close"
+              className="rounded-full size-7 grid place-items-center text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              ×
+            </button>
           </div>
         </div>
 
         {/* Listen bar */}
         <div className="px-4 py-3 border-b border-border flex items-center gap-2 bg-tobi/5">
           {!tts.speaking ? (
-            <button onClick={listen} className="flex items-center gap-2 rounded-full bg-tobi text-primary-foreground px-4 py-2 text-xs font-semibold hover:opacity-90">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5Z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+            <button
+              onClick={listen}
+              className="flex items-center gap-2 rounded-full bg-tobi text-primary-foreground px-4 py-2 text-xs font-semibold hover:opacity-90"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M11 5 6 9H2v6h4l5 4V5Z" />
+                <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+              </svg>
               Listen
             </button>
           ) : (
             <>
-              <button onClick={tts.paused ? tts.resume : tts.pause} className="rounded-full border border-tobi/60 px-3 py-1.5 text-xs hover:bg-tobi/10">{tts.paused ? "Resume" : "Pause"}</button>
-              <button onClick={tts.stop} className="rounded-full border border-border px-3 py-1.5 text-xs hover:bg-muted">Stop</button>
-              <span className="text-[10px] text-muted-foreground ml-1 truncate">{tts.paused ? "Paused" : `Reading · ${tts.voiceName}`}</span>
+              <button
+                onClick={tts.paused ? tts.resume : tts.pause}
+                className="rounded-full border border-tobi/60 px-3 py-1.5 text-xs hover:bg-tobi/10"
+              >
+                {tts.paused ? "Resume" : "Pause"}
+              </button>
+              <button
+                onClick={tts.stop}
+                className="rounded-full border border-border px-3 py-1.5 text-xs hover:bg-muted"
+              >
+                Stop
+              </button>
+              <span className="text-[10px] text-muted-foreground ml-1 truncate">
+                {tts.paused ? "Paused" : `Reading · ${tts.voiceName}`}
+              </span>
             </>
           )}
-          <a href={post.url} target="_blank" rel="noreferrer" className="ml-auto text-[11px] text-tobi hover:underline">Open original ↗</a>
+          <a
+            href={post.url}
+            target="_blank"
+            rel="noreferrer"
+            className="ml-auto text-[11px] text-tobi hover:underline"
+          >
+            Open original ↗
+          </a>
         </div>
 
         {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto scrollbar-thin px-4 py-4 space-y-4">
           {summary && (
             <div className="rounded-2xl bg-tobi/5 border border-tobi/20 p-3">
-              <div className="text-[10px] uppercase tracking-wider text-tobi font-semibold mb-1">Tobi's take</div>
+              <div className="text-[10px] uppercase tracking-wider text-tobi font-semibold mb-1">
+                Tobi's take
+              </div>
               <div className="prose-tobi text-xs text-foreground/90">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{summary}</ReactMarkdown>
               </div>
@@ -428,12 +550,30 @@ export function ReaderDock({ post, summary, onClose }: Props) {
 
           {post.related && post.related.length > 1 && (
             <div className="border-t border-border pt-3">
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Related links</div>
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
+                Related links
+              </div>
               <div className="space-y-2">
                 {post.related.slice(0, 6).map((hit) => (
-                  <a key={hit.url} href={hit.url} target="_blank" rel="noreferrer" className="block rounded-xl border border-border bg-background/40 p-3 hover:border-tobi/40 transition">
-                    <div className="text-xs font-medium text-foreground leading-snug">{hit.title}</div>
-                    <div className="mt-1 text-[10px] text-muted-foreground truncate">{(() => { try { return new URL(hit.url).hostname.replace(/^www\./, ""); } catch { return hit.url; } })()}</div>
+                  <a
+                    key={hit.url}
+                    href={hit.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="block rounded-xl border border-border bg-background/40 p-3 hover:border-tobi/40 transition"
+                  >
+                    <div className="text-xs font-medium text-foreground leading-snug">
+                      {hit.title}
+                    </div>
+                    <div className="mt-1 text-[10px] text-muted-foreground truncate">
+                      {(() => {
+                        try {
+                          return new URL(hit.url).hostname.replace(/^www\./, "");
+                        } catch {
+                          return hit.url;
+                        }
+                      })()}
+                    </div>
                   </a>
                 ))}
               </div>
@@ -476,7 +616,10 @@ export function ReaderDock({ post, summary, onClose }: Props) {
           {notes.length > 0 && (
             <div className="space-y-2 border-t border-border pt-3">
               {notes.map((n) => (
-                <div key={n.id} className="rounded-xl bg-tobi/10 border border-tobi/30 p-2.5 text-xs text-foreground/90">
+                <div
+                  key={n.id}
+                  className="rounded-xl bg-tobi/10 border border-tobi/30 p-2.5 text-xs text-foreground/90"
+                >
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>{n.text}</ReactMarkdown>
                 </div>
               ))}
@@ -487,8 +630,18 @@ export function ReaderDock({ post, summary, onClose }: Props) {
             <div className="rounded-2xl border border-tobi/50 bg-tobi/10 p-3 glow-ring">
               <p className="text-xs">Done with the post. Want me to read the first 5 comments?</p>
               <div className="mt-2 flex gap-2">
-                <button onClick={() => listenComments(0, PAGE)} className="flex-1 rounded-full bg-tobi text-primary-foreground text-xs font-semibold py-1.5 hover:opacity-90">Yes, read comments</button>
-                <button onClick={() => setAskComments(false)} className="rounded-full border border-border text-xs px-3 py-1.5 hover:bg-card">No thanks</button>
+                <button
+                  onClick={() => listenComments(0, PAGE)}
+                  className="flex-1 rounded-full bg-tobi text-primary-foreground text-xs font-semibold py-1.5 hover:opacity-90"
+                >
+                  Yes, read comments
+                </button>
+                <button
+                  onClick={() => setAskComments(false)}
+                  className="rounded-full border border-border text-xs px-3 py-1.5 hover:bg-card"
+                >
+                  No thanks
+                </button>
               </div>
             </div>
           )}
@@ -496,8 +649,18 @@ export function ReaderDock({ post, summary, onClose }: Props) {
             <div className="rounded-2xl border border-tobi/50 bg-tobi/10 p-3 glow-ring">
               <p className="text-xs">Want me to read the next 5 comments?</p>
               <div className="mt-2 flex gap-2">
-                <button onClick={() => listenComments(shown, PAGE)} className="flex-1 rounded-full bg-tobi text-primary-foreground text-xs font-semibold py-1.5 hover:opacity-90">Keep going</button>
-                <button onClick={() => setAskMore(false)} className="rounded-full border border-border text-xs px-3 py-1.5 hover:bg-card">Stop</button>
+                <button
+                  onClick={() => listenComments(shown, PAGE)}
+                  className="flex-1 rounded-full bg-tobi text-primary-foreground text-xs font-semibold py-1.5 hover:opacity-90"
+                >
+                  Keep going
+                </button>
+                <button
+                  onClick={() => setAskMore(false)}
+                  className="rounded-full border border-border text-xs px-3 py-1.5 hover:bg-card"
+                >
+                  Stop
+                </button>
               </div>
             </div>
           )}
@@ -509,11 +672,18 @@ export function ReaderDock({ post, summary, onClose }: Props) {
             <input
               value={followUp}
               onChange={(e) => setFollowUp(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") handleFollowUp(); }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleFollowUp();
+              }}
               placeholder='Ask Tobi about this post… ("find comment about X")'
               className="flex-1 bg-transparent px-2 py-1.5 text-xs outline-none placeholder:text-muted-foreground"
             />
-            <button onClick={handleFollowUp} className="rounded-full bg-tobi text-primary-foreground px-3 py-1.5 text-xs font-semibold hover:opacity-90">Ask</button>
+            <button
+              onClick={handleFollowUp}
+              className="rounded-full bg-tobi text-primary-foreground px-3 py-1.5 text-xs font-semibold hover:opacity-90"
+            >
+              Ask
+            </button>
           </div>
         </div>
       </div>
