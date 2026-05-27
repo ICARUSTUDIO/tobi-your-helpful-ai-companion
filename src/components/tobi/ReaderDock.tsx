@@ -6,7 +6,7 @@ import type { RedditPost } from "./types";
 
 type Mode = "expanded" | "docked" | "hidden";
 const PAGE = 5;
-const VOICE_LABEL = "Nova · OpenAI";
+const VOICE_LABEL = "Sage · OpenAI";
 
 interface Props {
   post: RedditPost;

@@ -3,7 +3,7 @@ import { z } from "zod";
 
 const Body = z.object({
   text: z.string().min(1).max(4000),
-  voice: z.string().min(1).max(40).default("nova"),
+  voice: z.string().min(1).max(40).default("sage"),
 });
 
 export const Route = createFileRoute("/api/tts")({
