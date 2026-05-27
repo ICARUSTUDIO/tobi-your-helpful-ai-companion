@@ -26,7 +26,12 @@ function useTTS() {
   const onDoneRef = useRef<(() => void) | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
 
-  useEffect(() => () => { hardStop(); }, []);
+  useEffect(
+    () => () => {
+      hardStop();
+    },
+    [],
+  );
 
   function stopRaf() {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -37,9 +42,19 @@ function useTTS() {
     cancelledRef.current = true;
     const a = audioRef.current;
     if (a) {
-      try { a.pause(); a.src = ""; a.load(); } catch {}
+      try {
+        a.pause();
+        a.src = "";
+        a.load();
+      } catch (error) {
+        void error;
+      }
     }
-    try { audioCtxRef.current?.close(); } catch {}
+    try {
+      audioCtxRef.current?.close();
+    } catch (error) {
+      void error;
+    }
     audioCtxRef.current = null;
     audioRef.current = null;
     stopRaf();
@@ -50,7 +65,9 @@ function useTTS() {
 
   function startAnalyser(audio: HTMLAudioElement) {
     if (audioCtxRef.current) return;
-    const Ctx = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    const Ctx =
+      window.AudioContext ||
+      (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!Ctx) return;
     const ctx = new Ctx();
     audioCtxRef.current = ctx;
