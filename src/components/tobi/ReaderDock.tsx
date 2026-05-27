@@ -49,6 +49,7 @@ function useTTS() {
   }
 
   function startAnalyser(audio: HTMLAudioElement) {
+    if (audioCtxRef.current) return;
     const Ctx = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!Ctx) return;
     const ctx = new Ctx();
@@ -124,6 +125,7 @@ function useTTS() {
     pausedRef.current = true;
     const a = audioRef.current;
     if (a) { try { a.pause(); } catch {} }
+    try { audioCtxRef.current?.suspend(); } catch {}
     stopRaf();
     setPaused(true);
   }
@@ -131,7 +133,7 @@ function useTTS() {
     pausedRef.current = false;
     const a = audioRef.current;
     if (a) {
-      a.play().then(() => startAnalyser(a)).catch(() => {});
+      a.play().then(() => { audioCtxRef.current?.resume().catch(() => {}); startAnalyser(a); }).catch(() => {});
     }
     setPaused(false);
   }
