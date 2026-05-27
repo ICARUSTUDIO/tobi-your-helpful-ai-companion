@@ -166,8 +166,18 @@ function useTTS() {
   function pause() {
     pausedRef.current = true;
     const a = audioRef.current;
-    if (a) { try { a.pause(); } catch {} }
-    try { audioCtxRef.current?.suspend(); } catch {}
+    if (a) {
+      try {
+        a.pause();
+      } catch (error) {
+        void error;
+      }
+    }
+    try {
+      audioCtxRef.current?.suspend();
+    } catch (error) {
+      void error;
+    }
     stopRaf();
     setPaused(true);
   }
@@ -175,11 +185,19 @@ function useTTS() {
     pausedRef.current = false;
     const a = audioRef.current;
     if (a) {
-      a.play().then(() => { audioCtxRef.current?.resume().catch(() => {}); startAnalyser(a); }).catch(() => {});
+      a.play()
+        .then(() => {
+          audioCtxRef.current?.resume().catch(() => undefined);
+          startAnalyser(a);
+        })
+        .catch(() => undefined);
     }
     setPaused(false);
   }
-  function stop() { hardStop(); onDoneRef.current = null; }
+  function stop() {
+    hardStop();
+    onDoneRef.current = null;
+  }
 
   return { speaking, paused, voiceName, intensity, speak, pause, resume, stop };
 }
