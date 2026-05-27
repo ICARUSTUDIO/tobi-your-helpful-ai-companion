@@ -6,7 +6,7 @@ import type { RedditPost } from "./types";
 
 type Mode = "expanded" | "docked" | "hidden";
 const PAGE = 5;
-const VOICE_LABEL = "Sage · OpenAI";
+const VOICE_LABEL = "Sarah · ElevenLabs";
 
 interface Props {
   post: RedditPost;
@@ -24,6 +24,7 @@ function useTTS() {
   const cancelledRef = useRef(false);
   const pausedRef = useRef(false);
   const onDoneRef = useRef<(() => void) | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
 
   useEffect(() => () => { hardStop(); }, []);
 
@@ -38,6 +39,8 @@ function useTTS() {
     if (a) {
       try { a.pause(); a.src = ""; a.load(); } catch {}
     }
+    try { audioCtxRef.current?.close(); } catch {}
+    audioCtxRef.current = null;
     audioRef.current = null;
     stopRaf();
     setIntensity(0);
@@ -45,12 +48,21 @@ function useTTS() {
     setPaused(false);
   }
 
-  function startFakeAnalyser() {
-    let t = 0;
+  function startAnalyser(audio: HTMLAudioElement) {
+    const Ctx = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    audioCtxRef.current = ctx;
+    const src = ctx.createMediaElementSource(audio);
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 128;
+    src.connect(analyser);
+    analyser.connect(ctx.destination);
+    const data = new Uint8Array(analyser.frequencyBinCount);
     const tick = () => {
-      t += 0.12;
-      const base = 0.35 + Math.sin(t) * 0.18 + Math.sin(t * 2.3) * 0.12;
-      setIntensity(Math.max(0.1, Math.min(1, base + Math.random() * 0.15)));
+      analyser.getByteFrequencyData(data);
+      const avg = data.reduce((sum, n) => sum + n, 0) / (data.length * 255);
+      setIntensity(Math.max(0.08, Math.min(1, avg * 2.4)));
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
@@ -71,10 +83,10 @@ function useTTS() {
     audioRef.current = audio;
     try {
       if (!pausedRef.current) await audio.play();
-      startFakeAnalyser();
+      startAnalyser(audio);
     } catch { URL.revokeObjectURL(url); return false; }
     return await new Promise<boolean>((resolve) => {
-      const cleanup = () => { stopRaf(); URL.revokeObjectURL(url); };
+      const cleanup = () => { stopRaf(); try { audioCtxRef.current?.close(); } catch {} audioCtxRef.current = null; URL.revokeObjectURL(url); };
       audio.onended = () => { cleanup(); resolve(true); };
       audio.onerror = () => { cleanup(); resolve(false); };
       const checkCancel = () => {
@@ -119,7 +131,7 @@ function useTTS() {
     pausedRef.current = false;
     const a = audioRef.current;
     if (a) {
-      a.play().then(() => startFakeAnalyser()).catch(() => {});
+      a.play().then(() => startAnalyser(a)).catch(() => {});
     }
     setPaused(false);
   }
