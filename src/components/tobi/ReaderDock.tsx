@@ -102,13 +102,34 @@ function useTTS() {
     try {
       if (!pausedRef.current) await audio.play();
       startAnalyser(audio);
-    } catch { URL.revokeObjectURL(url); return false; }
+    } catch {
+      URL.revokeObjectURL(url);
+      return false;
+    }
     return await new Promise<boolean>((resolve) => {
-      const cleanup = () => { stopRaf(); try { audioCtxRef.current?.close(); } catch {} audioCtxRef.current = null; URL.revokeObjectURL(url); };
-      audio.onended = () => { cleanup(); resolve(true); };
-      audio.onerror = () => { cleanup(); resolve(false); };
+      const cleanup = () => {
+        stopRaf();
+        try {
+          audioCtxRef.current?.close();
+        } catch (error) {
+          void error;
+        }
+        audioCtxRef.current = null;
+        URL.revokeObjectURL(url);
+      };
+      audio.onended = () => {
+        cleanup();
+        resolve(true);
+      };
+      audio.onerror = () => {
+        cleanup();
+        resolve(false);
+      };
       const checkCancel = () => {
-        if (cancelledRef.current) { cleanup(); resolve(false); }
+        if (cancelledRef.current) {
+          cleanup();
+          resolve(false);
+        }
       };
       audio.onpause = checkCancel;
     });
@@ -124,7 +145,11 @@ function useTTS() {
     for (let i = 0; i < chunks.length; i++) {
       if (cancelledRef.current) return;
       let ok = false;
-      try { ok = await playOne(chunks[i]); } catch { ok = false; }
+      try {
+        ok = await playOne(chunks[i]);
+      } catch {
+        ok = false;
+      }
       if (cancelledRef.current) return;
       if (!ok) {
         setSpeaking(false);
