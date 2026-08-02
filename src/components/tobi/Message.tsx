@@ -3,6 +3,8 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { TobiLogo } from "./TobiLogo";
 import { ThinkingIndicator } from "./ThinkingIndicator";
+import { AgentSteps } from "./AgentSteps";
+import { ApprovalCard } from "./ApprovalCard";
 import type { ChatMessage } from "./types";
 
 function IconBtn({ title, onClick, children }: { title: string; onClick: () => void; children: ReactNode }) {
@@ -25,6 +27,9 @@ export function Message({
   onRetry,
   onEdit,
   onDeepDive,
+  onApprove,
+  onDecline,
+  approvalBusy,
   pendingPromptText,
   pendingPromptMode,
 }: {
@@ -34,6 +39,9 @@ export function Message({
   onRetry?: () => void;
   onEdit?: () => void;
   onDeepDive?: () => void;
+  onApprove?: () => void;
+  onDecline?: () => void;
+  approvalBusy?: boolean;
   pendingPromptText?: string;
   pendingPromptMode?: "normal" | "research";
 }) {
@@ -84,6 +92,7 @@ export function Message({
             <span className="size-1.5 rounded-full bg-tobi" /> Deep research
           </div>
         )}
+        {m.steps && m.steps.length > 0 && <AgentSteps steps={m.steps} />}
         {m.pending ? (
           <ThinkingIndicator prompt={pendingPromptText || ""} mode={pendingPromptMode || m.mode || "normal"} />
         ) : (
@@ -130,6 +139,9 @@ export function Message({
               );
             })}
           </div>
+        )}
+        {m.approval && !m.approvalHandled && onApprove && onDecline && (
+          <ApprovalCard approval={m.approval} disabled={approvalBusy} onApprove={onApprove} onDecline={onDecline} />
         )}
       </div>
     </div>

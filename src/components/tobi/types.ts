@@ -53,4 +53,18 @@ export interface ChatMessage {
   attachments?: { name: string; kind: "docx" | "xlsx"; preview: string }[];
   mode?: "normal" | "research";
   pending?: boolean;
+  steps?: AgentStep[];
+  approval?: Approval | null;
+  approvalHandled?: boolean;
 }
+
+export interface AgentStep {
+  label: string;
+  detail?: string;
+  state: "running" | "done" | "failed";
+}
+
+export type Approval =
+  | { tool: "propose_plan"; title: string; goal: string; steps: string[] }
+  | { tool: "remember"; title: string; detail: string }
+  | { tool: "start_background_task"; title: string; detail: string; instruction: string };

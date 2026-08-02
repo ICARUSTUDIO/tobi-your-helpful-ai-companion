@@ -7,10 +7,11 @@ interface Props {
   email: string | null;
   onOpenHistory: () => void;
   onOpenMemory: () => void;
+  onOpenTasks: () => void;
   onNewChat: () => void;
 }
 
-export function UserMenu({ name, email, onOpenHistory, onOpenMemory, onNewChat }: Props) {
+export function UserMenu({ name, email, onOpenHistory, onOpenMemory, onOpenTasks, onNewChat }: Props) {
   const [open, setOpen] = useState(false);
   const initial = (name || email || "?").charAt(0).toUpperCase();
   const isCreator = (email ?? "").toLowerCase() === "tobyfemi55@gmail.com";
@@ -33,6 +34,10 @@ export function UserMenu({ name, email, onOpenHistory, onOpenMemory, onNewChat }
             <button onClick={() => { onOpenMemory(); setOpen(false); }} className="w-full text-left px-3 py-2 hover:bg-muted flex items-center justify-between">
               <span>What Tobi knows</span>
               <span className="text-[10px] text-muted-foreground">memory</span>
+            </button>
+            <button onClick={() => { onOpenTasks(); setOpen(false); }} className="w-full text-left px-3 py-2 hover:bg-muted flex items-center justify-between">
+              <span>Background tasks</span>
+              <span className="text-[10px] text-muted-foreground">agent</span>
             </button>
             {isCreator && (
               <Link to="/admin/training" onClick={() => setOpen(false)} className="block w-full text-left px-3 py-2 hover:bg-muted text-tobi">

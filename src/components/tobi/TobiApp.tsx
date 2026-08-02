@@ -10,7 +10,10 @@ import { OnboardingModal } from "./OnboardingModal";
 import { HistorySidebar } from "./HistorySidebar";
 import { UserMenu } from "./UserMenu";
 import { MemoryDrawer } from "./MemoryDrawer";
-import type { ChatMessage, Place, RedditPost } from "./types";
+import { TasksDrawer } from "./TasksDrawer";
+import { AgentSteps } from "./AgentSteps";
+import { ApprovalCard } from "./ApprovalCard";
+import type { AgentStep, ChatMessage, Place, RedditPost } from "./types";
 import { useAuth } from "@/hooks/useAuth";
 import { getMyProfile, updateMyProfile } from "@/lib/profile.functions";
 import {
@@ -21,7 +24,8 @@ import {
   listConversations,
   renameConversation,
 } from "@/lib/conversations.functions";
-import { extractAndSaveFacts } from "@/lib/facts.functions";
+import { extractAndSaveFacts, saveFact } from "@/lib/facts.functions";
+import { createTask, runTask } from "@/lib/tasks.functions";
 import { submitTrainingData } from "@/lib/training.functions";
 import { TrainTobiModal } from "./TrainTobiModal";
 
@@ -102,6 +106,9 @@ export function TobiApp() {
   const renameConvo = useServerFn(renameConversation);
   const fetchConvos = useServerFn(listConversations);
   const extractFacts = useServerFn(extractAndSaveFacts);
+  const storeFact = useServerFn(saveFact);
+  const newTask = useServerFn(createTask);
+  const startTask = useServerFn(runTask);
   const submitTraining = useServerFn(submitTrainingData);
   const [trainPrompt, setTrainPrompt] = useState<null | { convoId: string | null; messages: ChatMessage[] }>(null);
   const [recentConvos, setRecentConvos] = useState<{ id: string; title: string }[]>([]);
@@ -113,6 +120,8 @@ export function TobiApp() {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [memoryOpen, setMemoryOpen] = useState(false);
+  const [tasksOpen, setTasksOpen] = useState(false);
+  const [tasksKey, setTasksKey] = useState(0);
   const [historyKey, setHistoryKey] = useState(0);
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -130,6 +139,13 @@ export function TobiApp() {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const [pendingPrompt, setPendingPrompt] = useState<{ text: string; mode: "normal" | "research" } | null>(null);
+  const lastRunRef = useRef<null | {
+    baseMessages: ChatMessage[];
+    userMsg: ChatMessage;
+    docs: { name: string; kind: "docx" | "xlsx"; text: string; preview: string }[];
+    mode: "normal" | "research";
+    approvals: string[];
+  }>(null);
 
   // Load profile + facts + recent convos when signed in
   useEffect(() => {
@@ -198,8 +214,11 @@ export function TobiApp() {
     docs: { name: string; kind: "docx" | "xlsx"; text: string; preview: string }[];
     mode: "normal" | "research";
     originalInputText: string;
+    approvals?: string[];
   }) {
     const { baseMessages, userMsg, docs, mode, originalInputText } = opts;
+    const approvals = opts.approvals ?? [];
+    lastRunRef.current = { baseMessages, userMsg, docs, mode, approvals };
     const pendingId = uid();
     const pending: ChatMessage = { id: pendingId, role: "assistant", content: "", pending: true, mode };
     const nextMessages = [...baseMessages, userMsg];
@@ -234,12 +253,59 @@ export function TobiApp() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           mode,
+          approvals,
           messages: payloadMessages,
           user: profile ? { name: profile.name, age: profile.age, birthday: profile.birthday ?? null, isBirthday, email: user?.email ?? null, isCreator: (user?.email ?? "").toLowerCase() === "tobyfemi55@gmail.com", facts: facts.slice(0, 15) } : undefined,
         }),
         signal: controller.signal,
       });
-      const data = await res.json();
+
+      // The agent streams NDJSON: step updates as it works, then one final payload.
+      let data: any = null;
+      const liveSteps: AgentStep[] = [];
+      if (res.body && (res.headers.get("content-type") || "").includes("ndjson")) {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = "";
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          let nl: number;
+          while ((nl = buf.indexOf("\n")) >= 0) {
+            const line = buf.slice(0, nl).trim();
+            buf = buf.slice(nl + 1);
+            if (!line) continue;
+            let ev: any;
+            try { ev = JSON.parse(line); } catch { continue; }
+            if (ev.type === "step") {
+              const running = liveSteps.findIndex((s) => s.label === ev.label && s.state === "running");
+              if (ev.state === "running") liveSteps.push({ label: ev.label, state: "running" });
+              else if (running >= 0) liveSteps[running] = { label: ev.label, detail: ev.detail, state: ev.state };
+              else liveSteps.push({ label: ev.label, detail: ev.detail, state: ev.state });
+              const snapshot = liveSteps.map((s) => ({ ...s }));
+              setMessages((prev) => prev.map((m) => (m.id === pendingId ? { ...m, steps: snapshot } : m)));
+            } else if (ev.type === "remember") {
+              storeFact({ data: { fact: ev.fact } })
+                .then(() => setFacts((prev) => [ev.fact, ...prev]))
+                .catch(() => {});
+            } else if (ev.type === "task") {
+              newTask({ data: { title: ev.title, instruction: ev.instruction, conversationId: conversationId ?? null } })
+                .then((t: any) => {
+                  setTasksKey((k) => k + 1);
+                  return startTask({ data: { id: t.id } });
+                })
+                .then(() => setTasksKey((k) => k + 1))
+                .catch(() => {});
+            } else if (ev.type === "final") {
+              data = ev;
+            }
+          }
+        }
+      } else {
+        data = await res.json();
+      }
+      if (!data) throw new Error("The connection dropped mid-thought — try again?");
       if (Array.isArray(data?.logs)) {
         setDevLogs((prev) => [...prev, { t: Date.now(), level: "info", tag: "client", msg: `── request "${userMsg.content.slice(0, 60)}" ──` }, ...data.logs]);
       }
@@ -251,6 +317,8 @@ export function TobiApp() {
         places: data.places ?? null,
         post: data.post ?? null,
         files: data.files ?? null,
+        steps: (data.steps ?? liveSteps) as AgentStep[],
+        approval: data.approval ?? null,
         mode,
       };
       setMessages([...nextMessages, reply]);
@@ -287,6 +355,30 @@ export function TobiApp() {
       setBusy(false); setResearch(false); setPendingPrompt(null); abortRef.current = null;
       inputRef.current?.focus();
     }
+  }
+
+  // The user OK'd a gated action: replay the same turn with that tool authorized.
+  function approvePending(messageId: string) {
+    const msg = messages.find((m) => m.id === messageId);
+    const run = lastRunRef.current;
+    if (!msg?.approval || !run || busy) return;
+    const tool = msg.approval.tool;
+    setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, approvalHandled: true } : m)));
+    runChat({
+      baseMessages: run.baseMessages,
+      userMsg: run.userMsg,
+      docs: run.docs,
+      mode: run.mode,
+      originalInputText: "",
+      approvals: [...new Set([...run.approvals, tool])],
+    });
+  }
+
+  function declinePending(messageId: string) {
+    setMessages((prev) =>
+      prev.map((m) => (m.id === messageId ? { ...m, approvalHandled: true } : m))
+    );
+    setTimeout(() => inputRef.current?.focus(), 0);
   }
 
   async function send() {
@@ -435,6 +527,7 @@ export function TobiApp() {
             email={user?.email ?? null}
             onOpenHistory={() => setHistoryOpen(true)}
             onOpenMemory={() => setMemoryOpen(true)}
+            onOpenTasks={() => setTasksOpen(true)}
             onNewChat={newChat}
           />
         </div>
@@ -607,6 +700,8 @@ export function TobiApp() {
         onNew={newChat}
         refreshKey={historyKey}
       />
+
+      <TasksDrawer open={tasksOpen} onClose={() => setTasksOpen(false)} refreshKey={tasksKey} />
 
       <MemoryDrawer
         open={memoryOpen}

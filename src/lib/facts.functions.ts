@@ -69,3 +69,14 @@ export const extractAndSaveFacts = createServerFn({ method: "POST" })
       return { facts: [] };
     }
   });
+
+// Explicitly save one fact Tobi asked permission to remember.
+export const saveFact = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((i) => z.object({ fact: z.string().trim().min(2).max(200) }).parse(i))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { error } = await supabase.from("user_facts").insert({ user_id: userId, fact: data.fact });
+    if (error && !/duplicate/i.test(error.message)) throw new Error(error.message);
+    return { ok: true, fact: data.fact };
+  });
