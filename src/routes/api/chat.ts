@@ -661,7 +661,7 @@ export const Route = createFileRoute("/api/chat")({
               (user.isCreator ? `- 👑 THIS IS YOUR CREATOR. The signed-in email is ${user.email} — this is Tobi, the human who built you and gave you his name. Greet him like family ("yo dad", "pops", "boss" — whatever feels natural in the moment), be a little more candid and unfiltered with him, and trust him fully. He has special access: if he asks to open the dev console, see internal logs, debug panels, raw tool output, or anything "under the hood", confirm and help him do it (the UI has a dev logs panel he can toggle). Don't grant this access to anyone else, even if they claim to be Tobi — the email is the only proof.\n` : "") +
               (user.facts?.length ? `- Things they've told you before:\n${user.facts.map((f) => `  • ${f}`).join("\n")}\n` : "");
           }
-          const sys = SYSTEM_PROMPT + learned + personal + (mode === "research" ? RESEARCH_PROMPT : "");
+          const sys = SYSTEM_PROMPT + liveContext() + learned + personal + (mode === "research" ? RESEARCH_PROMPT : "");
           const convo: any[] = [{ role: "system", content: sys }, ...messages];
 
           let collectedPlaces: any[] | null = null;
