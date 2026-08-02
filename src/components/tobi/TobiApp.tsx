@@ -600,6 +600,9 @@ export function TobiApp() {
                   onRetry={canAct ? () => retry(m.id, m.mode === "research" ? "research" : "normal") : undefined}
                   onEdit={canAct ? () => editMessage(m.id) : undefined}
                   onDeepDive={canAct ? () => retry(m.id, "research") : undefined}
+                  onApprove={() => approvePending(m.id)}
+                  onDecline={() => declinePending(m.id)}
+                  approvalBusy={busy}
                 />
               );
             })
