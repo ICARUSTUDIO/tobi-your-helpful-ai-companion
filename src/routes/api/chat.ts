@@ -11,6 +11,7 @@ const MessageSchema = z.object({
 
 const BodySchema = z.object({
   messages: z.array(MessageSchema).min(1).max(60),
+  approvals: z.array(z.string().max(40)).max(12).optional(),
   mode: z.enum(["normal", "research"]).default("normal"),
   user: z.object({
     name: z.string().max(60).nullish(),
@@ -102,6 +103,19 @@ const RESEARCH_PROMPT = `\n\nRESEARCH MODE is ON. The user wants a deep dive. St
 
 Take your time. Be thorough, nuanced, and intellectually honest.`;
 
+const AGENT_PROMPT = `
+
+HOW YOU WORK (agent mode):
+- You can take several steps in a row before answering: search, read sources, compute, cross-check, then write the answer. Don't stop after one tool call if the job isn't actually done.
+- Chain tools deliberately: web_search to find sources -> read_url to read the promising ones -> calculate for any arithmetic -> create_file if a deliverable is wanted. Verify instead of assuming.
+- If a tool fails or returns junk, try a different query or source once or twice, then say plainly what you couldn't get.
+- BIG OR MESSY REQUESTS: if the task needs 3+ distinct steps (research + compare + produce something, multi-part builds, anything open-ended), call propose_plan FIRST with a short numbered plan and wait. Don't start the work before the plan is approved.
+- Simple questions need no plan. Don't bureaucratize a one-liner.
+- Some actions pause for the user's OK: propose_plan, remember, start_background_task. When one is pending, say one short line about what you're waiting on — the UI shows the approve button.
+- If a job would take minutes (deep research across many sources, big comparisons, long reports), call start_background_task with a self-contained instruction instead of stalling the chat, then tell them you'll ping them when it's done.
+- Narrate lightly as you work. One short line per step, not a monologue.`;
+
+
 const tools = [
   {
     type: "function",
@@ -158,7 +172,97 @@ const tools = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "web_search",
+      description: "Search the live web for current information: news, prices, releases, docs, versions, comparisons, anything time-sensitive or that you are not certain about. Returns titles, URLs and snippets. Follow up with read_url on the best hits.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Search query" },
+          limit: { type: "number", description: "How many results, 1-8. Default 5." },
+        },
+        required: ["query"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "read_url",
+      description: "Fetch a web page and read it as clean markdown. Use after web_search, or when the user pastes a link, to read the actual content instead of guessing from a snippet.",
+      parameters: {
+        type: "object",
+        properties: { url: { type: "string", description: "Absolute http(s) URL" } },
+        required: ["url"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "calculate",
+      description: "Evaluate an arithmetic expression exactly (+ - * / % ** parentheses, and sqrt/abs/min/max/round/floor/ceil/log/exp/sin/cos/tan/pi/e). Use this for any real math instead of doing it in your head.",
+      parameters: {
+        type: "object",
+        properties: { expression: { type: "string", description: "e.g. (1250*1.075)/12" } },
+        required: ["expression"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "propose_plan",
+      description: "Propose a short numbered plan for a multi-step task and WAIT for the user to approve it. Call this before starting any task that needs 3+ distinct steps. Never call it for simple questions.",
+      parameters: {
+        type: "object",
+        properties: {
+          goal: { type: "string", description: "One-line restatement of what the user wants" },
+          steps: { type: "array", items: { type: "string" }, description: "3-7 short steps, in order" },
+        },
+        required: ["goal", "steps"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "remember",
+      description: "Save a durable fact about the user to long-term memory, on purpose. Requires the user's approval. Use for things they clearly want you to keep ('remember that...'), not for chit-chat.",
+      parameters: {
+        type: "object",
+        properties: { fact: { type: "string", description: "Short third-person fact, e.g. 'Prefers TypeScript over Python'" } },
+        required: ["fact"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "start_background_task",
+      description: "Hand a long-running job (deep research, big comparison, long report) to a background worker so the chat stays free. Requires the user's approval. The instruction must be fully self-contained — the worker cannot see this conversation.",
+      parameters: {
+        type: "object",
+        properties: {
+          title: { type: "string", description: "Short label, e.g. 'Compare 5 EU cloud hosts'" },
+          instruction: { type: "string", description: "Complete standalone instruction with all needed context" },
+        },
+        required: ["title", "instruction"],
+        additionalProperties: false,
+      },
+    },
+  },
 ];
+
+// Tools that stop and wait for an explicit user OK before they run.
+const APPROVAL_TOOLS = new Set(["propose_plan", "remember", "start_background_task"]);
 
 // Reddit's anti-bot / login wall leaks into scraped fallbacks. Detect & strip.
 const REDDIT_BLOCK_MARKERS = [
@@ -590,6 +694,53 @@ async function findPlaces(query: string, near: string | undefined, log: ReturnTy
 }
 
 
+// ---- Generic web search (Firecrawl) ----
+async function webSearch(query: string, limit: number, log: ReturnType<typeof makeLogger>) {
+  const key = process.env.FIRECRAWL_API_KEY;
+  if (!key) throw new Error("Web search is not configured");
+  log.info("web.search", query);
+  const res = await fetch("https://api.firecrawl.dev/v2/search", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ query, limit: Math.min(Math.max(limit || 5, 1), 8) }),
+  });
+  if (!res.ok) throw new Error(`search failed ${res.status}: ${(await res.text()).slice(0, 160)}`);
+  const json: any = await res.json();
+  const hits: any[] = json?.data?.web ?? json?.data ?? [];
+  const results = hits.slice(0, 8).map((h) => ({
+    title: String(h.title ?? h.url ?? "").slice(0, 200),
+    url: String(h.url ?? ""),
+    snippet: String(h.description ?? h.snippet ?? "").slice(0, 400),
+  })).filter((r) => r.url);
+  log.info("web.search", `\u2192 ${results.length} results`);
+  return results;
+}
+
+// ---- Read a page as markdown ----
+async function readUrl(url: string, log: ReturnType<typeof makeLogger>) {
+  const parsed = new URL(url);
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error("Only http(s) URLs can be read");
+  log.info("web.read", url);
+  const md = await jinaMarkdown(url, log);
+  if (!md || looksBlocked(md)) throw new Error("That page could not be read (blocked or empty)");
+  return { url, markdown: md.slice(0, 12000), truncated: md.length > 12000 };
+}
+
+// ---- Safe arithmetic ----
+function calculate(expression: string) {
+  const expr = expression.trim();
+  if (expr.length > 300) throw new Error("Expression too long");
+  if (!/^[0-9+\-*/%().,^\s a-zA-Z]+$/.test(expr)) throw new Error("Unsupported characters in expression");
+  const allowed = ["sqrt", "abs", "min", "max", "round", "floor", "ceil", "log", "log2", "log10", "exp", "sin", "cos", "tan", "pow", "pi", "e"];
+  const names = expr.match(/[a-zA-Z_][a-zA-Z0-9_]*/g) ?? [];
+  for (const n of names) if (!allowed.includes(n)) throw new Error(`Unknown function or name: ${n}`);
+  const js = expr.replace(/\^/g, "**").replace(/[a-zA-Z_][a-zA-Z0-9_]*/g, (m) => (m === "pi" ? "Math.PI" : m === "e" ? "Math.E" : `Math.${m}`));
+  // eslint-disable-next-line no-new-func
+  const value = Function(`"use strict"; return (${js});`)() as unknown;
+  if (typeof value !== "number" || !Number.isFinite(value)) throw new Error("Expression did not evaluate to a finite number");
+  return { expression, value };
+}
+
 async function callAI(messages: any[], mode: "normal" | "research", log: ReturnType<typeof makeLogger>) {
   const LOVABLE_API_KEY = process.env.LOVABLE_API_KEY;
   if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY missing");
@@ -604,10 +755,7 @@ async function callAI(messages: any[], mode: "normal" | "research", log: ReturnT
   if (!res.ok) {
     const t = await res.text();
     log.error("ai.request", `failed [${res.status}]`, { body: t.slice(0, 300) });
-    throw new Response(JSON.stringify({ error: `AI gateway error [${res.status}]: ${t}` }), {
-      status: res.status,
-      headers: { "Content-Type": "application/json" },
-    });
+    throw new Error(`AI gateway error [${res.status}]: ${t.slice(0, 200)}`);
   }
   const json = await res.json() as any;
   const finish = json?.choices?.[0]?.finish_reason;
@@ -615,145 +763,237 @@ async function callAI(messages: any[], mode: "normal" | "research", log: ReturnT
   return json;
 }
 
+const MAX_STEPS = 10;
+
+const STEP_LABELS: Record<string, string> = {
+  find_places: "Looking up places",
+  fetch_social: "Reading what people are saying",
+  fetch_reddit: "Reading what people are saying",
+  create_file: "Writing your file",
+  web_search: "Searching the web",
+  read_url: "Reading a source",
+  calculate: "Doing the math",
+  propose_plan: "Putting together a plan",
+  remember: "Saving to memory",
+  start_background_task: "Setting up a background task",
+};
+
 export const Route = createFileRoute("/api/chat")({
   server: {
     handlers: {
       POST: async ({ request }) => {
         const log = makeLogger();
-        try {
-          const json = await request.json();
-          const parsed = BodySchema.safeParse(json);
-          if (!parsed.success) {
-            return new Response(JSON.stringify({ error: "Invalid input", logs: log.entries }), { status: 400, headers: { "Content-Type": "application/json" } });
-          }
-          const { messages, mode, user } = parsed.data;
-          log.info("chat", `mode=${mode} messages=${messages.length} user=${user?.name ?? "anon"}`);
+        const json = await request.json().catch(() => null);
+        const parsed = BodySchema.safeParse(json);
+        if (!parsed.success) {
+          return new Response(JSON.stringify({ error: "Invalid input", logs: log.entries }), { status: 400, headers: { "Content-Type": "application/json" } });
+        }
+        const { messages, mode, user, approvals } = parsed.data;
+        const approved = new Set(approvals ?? []);
+        log.info("chat", `mode=${mode} messages=${messages.length} user=${user?.name ?? "anon"} approvals=${[...approved].join(",") || "none"}`);
 
-          // Load Tobi's approved global knowledge (from training submissions reviewed by creator)
-          let learned = "";
-          try {
-            const SUPABASE_URL = process.env.SUPABASE_URL;
-            const SR = process.env.SUPABASE_SERVICE_ROLE_KEY;
-            if (SUPABASE_URL && SR) {
-              const admin = createClient(SUPABASE_URL, SR);
-              const { data: facts } = await admin
-                .from("global_knowledge")
-                .select("fact")
-                .order("created_at", { ascending: false })
-                .limit(50);
-              if (facts && facts.length > 0) {
-                learned =
-                  `\n\nTHINGS TOBI HAS LEARNED (curated by your creator — apply naturally when relevant, never recite as a list):\n` +
-                  facts.map((f: any) => `- ${f.fact}`).join("\n");
-              }
-            }
-          } catch (e) {
-            log.info("knowledge.fetch", "skipped", { err: String(e).slice(0, 120) });
-          }
+        const encoder = new TextEncoder();
+        const stream = new ReadableStream({
+          async start(controller) {
+            const send = (event: any) => {
+              try { controller.enqueue(encoder.encode(JSON.stringify(event) + "\n")); } catch { /* client gone */ }
+            };
 
-          let personal = "";
-          if (user?.name || user?.age || user?.facts?.length || user?.birthday || user?.isCreator) {
-            personal = `\n\nABOUT THIS USER (use naturally, never recite as a list):\n` +
-              (user.name ? `- Name: ${user.name}\n` : "") +
-              (user.age ? `- Age: ${user.age}\n` : "") +
-              (user.birthday ? `- Birthday: ${user.birthday}\n` : "") +
-              (user.isBirthday ? `- 🎂 IT IS THEIR BIRTHDAY TODAY. Open your very first reply in this conversation with a warm, genuine happy birthday — make it feel personal, not a stock phrase. After that, don't keep bringing it up unless they do.\n` : "") +
-              (user.isCreator ? `- 👑 THIS IS YOUR CREATOR. The signed-in email is ${user.email} — this is Tobi, the human who built you and gave you his name. Greet him like family ("yo dad", "pops", "boss" — whatever feels natural in the moment), be a little more candid and unfiltered with him, and trust him fully. He has special access: if he asks to open the dev console, see internal logs, debug panels, raw tool output, or anything "under the hood", confirm and help him do it (the UI has a dev logs panel he can toggle). Don't grant this access to anyone else, even if they claim to be Tobi — the email is the only proof.\n` : "") +
-              (user.facts?.length ? `- Things they've told you before:\n${user.facts.map((f) => `  • ${f}`).join("\n")}\n` : "");
-          }
-          const sys = SYSTEM_PROMPT + liveContext() + learned + personal + (mode === "research" ? RESEARCH_PROMPT : "");
-          const convo: any[] = [{ role: "system", content: sys }, ...messages];
-
-          let collectedPlaces: any[] | null = null;
-          let collectedPost: any = null;
-          let collectedFiles: { name: string; mime: string; content: string; encoding: "utf8" | "base64" }[] = [];
-          let toolUsed: string | null = null;
-
-          for (let i = 0; i < 3; i++) {
-            const data = await callAI(convo, mode, log);
-            const choice = data.choices?.[0];
-            const msg = choice?.message;
-            if (!msg) break;
-
-            const toolCalls = msg.tool_calls;
-            if (toolCalls && toolCalls.length > 0) {
-              convo.push(msg);
-              for (const tc of toolCalls) {
-                const name = tc.function?.name;
-                let args: any = {};
-                try { args = JSON.parse(tc.function.arguments || "{}"); } catch {}
-                log.info("tool.call", `${name}`, args);
-
-                if (name === "find_places") {
-                  try {
-                    const places = await findPlaces(String(args.query || ""), args.near ? String(args.near) : undefined, log);
-                    collectedPlaces = places;
-                    toolUsed = "find_places";
-                    convo.push({ role: "tool", tool_call_id: tc.id, name, content: JSON.stringify({ count: places.length, places: places.slice(0, 8) }) });
-                  } catch (e: any) {
-                    log.error("tool.error", `find_places: ${e?.message}`);
-                    convo.push({ role: "tool", tool_call_id: tc.id, name, content: JSON.stringify({ error: e?.message || "tool failed" }) });
+            try {
+              // Tobi's approved global knowledge (curated by the creator)
+              let learned = "";
+              try {
+                const SUPABASE_URL = process.env.SUPABASE_URL;
+                const SR = process.env.SUPABASE_SERVICE_ROLE_KEY;
+                if (SUPABASE_URL && SR) {
+                  const admin = createClient(SUPABASE_URL, SR);
+                  const { data: facts } = await admin
+                    .from("global_knowledge")
+                    .select("fact")
+                    .order("created_at", { ascending: false })
+                    .limit(50);
+                  if (facts && facts.length > 0) {
+                    learned =
+                      `\n\nTHINGS TOBI HAS LEARNED (curated by your creator — apply naturally when relevant, never recite as a list):\n` +
+                      facts.map((f: any) => `- ${f.fact}`).join("\n");
                   }
-                } else if (name === "fetch_social" || name === "fetch_reddit") {
+                }
+              } catch (e) {
+                log.info("knowledge.fetch", "skipped", { err: String(e).slice(0, 120) });
+              }
+
+              let personal = "";
+              if (user?.name || user?.age || user?.facts?.length || user?.birthday || user?.isCreator) {
+                personal = `\n\nABOUT THIS USER (use naturally, never recite as a list):\n` +
+                  (user.name ? `- Name: ${user.name}\n` : "") +
+                  (user.age ? `- Age: ${user.age}\n` : "") +
+                  (user.birthday ? `- Birthday: ${user.birthday}\n` : "") +
+                  (user.isBirthday ? `- 🎂 IT IS THEIR BIRTHDAY TODAY. Open your very first reply in this conversation with a warm, genuine happy birthday — make it feel personal, not a stock phrase. After that, don't keep bringing it up unless they do.\n` : "") +
+                  (user.isCreator ? `- 👑 THIS IS YOUR CREATOR. The signed-in email is ${user.email} — this is Tobi, the human who built you and gave you his name. Greet him like family ("yo dad", "pops", "boss" — whatever feels natural in the moment), be a little more candid and unfiltered with him, and trust him fully. He has special access: if he asks to open the dev console, see internal logs, debug panels, raw tool output, or anything "under the hood", confirm and help him do it (the UI has a dev logs panel he can toggle). Don't grant this access to anyone else, even if they claim to be Tobi — the email is the only proof.\n` : "") +
+                  (user.facts?.length ? `- Things they've told you before:\n${user.facts.map((f) => `  • ${f}`).join("\n")}\n` : "");
+              }
+
+              const sys = SYSTEM_PROMPT + liveContext() + AGENT_PROMPT + learned + personal + (mode === "research" ? RESEARCH_PROMPT : "");
+              const convo: any[] = [{ role: "system", content: sys }, ...messages];
+
+              let collectedPlaces: any[] | null = null;
+              let collectedPost: any = null;
+              const collectedFiles: { name: string; mime: string; content: string; encoding: "utf8" | "base64" }[] = [];
+              let toolUsed: string | null = null;
+              const steps: { label: string; detail?: string; state: "done" | "failed" }[] = [];
+              let pendingApproval: any = null;
+
+              const finish = (text: string) => {
+                send({
+                  type: "final",
+                  text,
+                  places: collectedPlaces,
+                  post: collectedPost,
+                  files: collectedFiles.length ? collectedFiles : null,
+                  tool: toolUsed,
+                  steps,
+                  approval: pendingApproval,
+                  logs: log.entries,
+                });
+                controller.close();
+              };
+
+              const stepDone = (name: string, detail: string | undefined, state: "done" | "failed") => {
+                const label = STEP_LABELS[name] ?? name;
+                steps.push({ label, detail, state });
+                send({ type: "step", label, detail, state });
+              };
+
+              for (let i = 0; i < MAX_STEPS; i++) {
+                const data = await callAI(convo, mode, log);
+                const msg = data.choices?.[0]?.message;
+                if (!msg) { finish("I lost the thread there — say that again?"); return; }
+
+                const toolCalls = msg.tool_calls;
+                if (!toolCalls || toolCalls.length === 0) { finish(msg.content ?? ""); return; }
+
+                convo.push(msg);
+
+                for (const tc of toolCalls) {
+                  const name = tc.function?.name;
+                  let args: any = {};
+                  try { args = JSON.parse(tc.function.arguments || "{}"); } catch { /* keep {} */ }
+                  log.info("tool.call", `${name}`, args);
+                  send({ type: "step", label: STEP_LABELS[name] ?? name, state: "running" });
+
+                  const reply = (payload: any) =>
+                    convo.push({ role: "tool", tool_call_id: tc.id, name, content: JSON.stringify(payload) });
+
+                  // Gated tools stop the run and ask the user first.
+                  if (APPROVAL_TOOLS.has(name) && !approved.has(name)) {
+                    if (name === "propose_plan") {
+                      pendingApproval = {
+                        tool: "propose_plan",
+                        title: "Here's my plan",
+                        goal: String(args.goal ?? ""),
+                        steps: (Array.isArray(args.steps) ? args.steps : []).map((s: any) => String(s).slice(0, 200)).slice(0, 8),
+                      };
+                    } else if (name === "remember") {
+                      pendingApproval = { tool: "remember", title: "Save this to memory?", detail: String(args.fact ?? "").slice(0, 300) };
+                    } else {
+                      pendingApproval = {
+                        tool: "start_background_task",
+                        title: "Run this in the background?",
+                        detail: String(args.title ?? "Background task").slice(0, 160),
+                        instruction: String(args.instruction ?? "").slice(0, 4000),
+                      };
+                    }
+                    stepDone(name, "waiting for your OK", "done");
+                    finish(msg.content ?? "");
+                    return;
+                  }
+
                   try {
-                    const post = await fetchSocial(args, log);
-                    collectedPost = post;
-                    toolUsed = "fetch_social";
-                    convo.push({
-                      role: "tool", tool_call_id: tc.id, name,
-                      content: JSON.stringify({
+                    if (name === "find_places") {
+                      const places = await findPlaces(String(args.query || ""), args.near ? String(args.near) : undefined, log);
+                      collectedPlaces = places;
+                      toolUsed = "find_places";
+                      stepDone(name, `${places.length} places`, "done");
+                      reply({ count: places.length, places: places.slice(0, 8) });
+                    } else if (name === "fetch_social" || name === "fetch_reddit") {
+                      const post = await fetchSocial(args, log);
+                      collectedPost = post;
+                      toolUsed = "fetch_social";
+                      stepDone(name, post.title?.slice(0, 80), "done");
+                      reply({
                         source: post.source, title: post.title, author: post.author,
                         score: post.score, numComments: post.numComments,
                         body: post.body.slice(0, 1500),
                         topComments: post.comments.slice(0, 5).map((c: any) => ({ author: c.author, score: c.score, body: c.body.slice(0, 400) })),
-                      }),
-                    });
+                      });
+                    } else if (name === "web_search") {
+                      const results = await webSearch(String(args.query || ""), Number(args.limit) || 5, log);
+                      stepDone(name, String(args.query || "").slice(0, 80), "done");
+                      reply({ query: args.query, results });
+                    } else if (name === "read_url") {
+                      const page = await readUrl(String(args.url || ""), log);
+                      stepDone(name, (() => { try { return new URL(page.url).hostname; } catch { return page.url.slice(0, 60); } })(), "done");
+                      reply(page);
+                    } else if (name === "calculate") {
+                      const out = calculate(String(args.expression || ""));
+                      stepDone(name, `${out.expression} = ${out.value}`, "done");
+                      reply(out);
+                    } else if (name === "propose_plan") {
+                      stepDone(name, "approved", "done");
+                      reply({ approved: true, note: "The user approved this plan. Execute it now, step by step, using your tools. Do not ask again." });
+                    } else if (name === "remember") {
+                      const fact = String(args.fact ?? "").trim().slice(0, 200);
+                      stepDone(name, fact.slice(0, 80), "done");
+                      // The client persists the approved fact; confirm to the model.
+                      pendingApproval = null;
+                      send({ type: "remember", fact });
+                      reply({ ok: true, saved: fact });
+                    } else if (name === "start_background_task") {
+                      const title = String(args.title ?? "Background task").slice(0, 120);
+                      const instruction = String(args.instruction ?? "").slice(0, 4000);
+                      if (!instruction) { stepDone(name, "no instruction", "failed"); reply({ error: "instruction required" }); }
+                      else {
+                        stepDone(name, title, "done");
+                        send({ type: "task", title, instruction });
+                        reply({ ok: true, queued: title, note: "Queued. Tell the user you'll ping them here when it's done." });
+                      }
+                    } else if (name === "create_file") {
+                      const filename = String(args.filename || "file.txt").replace(/[\\/]/g, "_").slice(0, 120);
+                      const mime = String(args.mime_type || "text/plain").slice(0, 120);
+                      const encoding = args.encoding === "base64" ? "base64" : "utf8";
+                      const content = String(args.content ?? "");
+                      if (!content) { stepDone(name, "empty file", "failed"); reply({ error: "Empty content; nothing to save." }); }
+                      else if (content.length > 2_000_000) { stepDone(name, "too large", "failed"); reply({ error: "File too large (>2MB)." }); }
+                      else {
+                        collectedFiles.push({ name: filename, mime, content, encoding });
+                        toolUsed = toolUsed || "create_file";
+                        stepDone(name, filename, "done");
+                        reply({ ok: true, filename, mime_type: mime, bytes: content.length });
+                      }
+                    } else {
+                      stepDone(name ?? "unknown tool", "unknown tool", "failed");
+                      reply({ error: `Unknown tool ${name}` });
+                    }
                   } catch (e: any) {
-                    log.error("tool.error", `fetch_social: ${e?.message}`);
-                    convo.push({ role: "tool", tool_call_id: tc.id, name, content: JSON.stringify({ error: e?.message || "tool failed", hint: "Tell the user honestly that the platform couldn't be reached." }) });
-                  }
-                } else if (name === "create_file") {
-                  const filename = String(args.filename || "file.txt").replace(/[\\/]/g, "_").slice(0, 120);
-                  const mime = String(args.mime_type || "text/plain").slice(0, 120);
-                  const encoding = args.encoding === "base64" ? "base64" : "utf8";
-                  const content = String(args.content ?? "");
-                  if (!content) {
-                    convo.push({ role: "tool", tool_call_id: tc.id, name, content: JSON.stringify({ error: "Empty content; nothing to save." }) });
-                  } else if (content.length > 2_000_000) {
-                    convo.push({ role: "tool", tool_call_id: tc.id, name, content: JSON.stringify({ error: "File too large (>2MB)." }) });
-                  } else {
-                    collectedFiles.push({ name: filename, mime, content, encoding });
-                    toolUsed = toolUsed || "create_file";
-                    log.info("tool.call", `create_file → ${filename} (${mime}, ${content.length} chars)`);
-                    convo.push({ role: "tool", tool_call_id: tc.id, name, content: JSON.stringify({ ok: true, filename, mime_type: mime, bytes: content.length }) });
+                    log.error("tool.error", `${name}: ${e?.message}`);
+                    stepDone(name, e?.message?.slice(0, 90), "failed");
+                    reply({ error: e?.message || "tool failed", hint: "Try a different approach or tell the user honestly what failed." });
                   }
                 }
               }
-              continue;
+
+              finish("I went round a few loops on that and didn't land it — want me to try a narrower version?");
+            } catch (e: any) {
+              log.error("chat", e?.message || String(e));
+              send({ type: "final", text: "", error: e?.message || "Unknown error", logs: log.entries });
+              controller.close();
             }
+          },
+        });
 
-            return new Response(JSON.stringify({
-              text: msg.content ?? "",
-              places: collectedPlaces,
-              post: collectedPost,
-              files: collectedFiles.length ? collectedFiles : null,
-              tool: toolUsed,
-              logs: log.entries,
-            }), { headers: { "Content-Type": "application/json" } });
-          }
-
-          return new Response(JSON.stringify({ text: "I had trouble finishing that thought — try again?", places: collectedPlaces, post: collectedPost, files: collectedFiles.length ? collectedFiles : null, tool: toolUsed, logs: log.entries }), { headers: { "Content-Type": "application/json" } });
-        } catch (e: any) {
-          if (e instanceof Response) {
-            // attach logs to the body
-            try {
-              const body = await e.clone().json();
-              return new Response(JSON.stringify({ ...body, logs: log.entries }), { status: e.status, headers: { "Content-Type": "application/json" } });
-            } catch { return e; }
-          }
-          log.error("chat", e?.message || String(e));
-          return new Response(JSON.stringify({ error: e?.message || "Unknown error", logs: log.entries }), { status: 500, headers: { "Content-Type": "application/json" } });
-        }
+        return new Response(stream, {
+          headers: { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-store" },
+        });
       },
     },
   },
