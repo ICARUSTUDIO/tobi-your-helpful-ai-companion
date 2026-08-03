@@ -1,4 +1,6 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect } from "react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { supabase } from "@/integrations/supabase/client";
 import { TobiLogo } from "@/components/tobi/TobiLogo";
 
 export const Route = createFileRoute("/")({
@@ -47,6 +49,23 @@ export const Route = createFileRoute("/")({
 });
 
 function LandingPage() {
+  const navigate = useNavigate();
+
+  // After a full-page Google redirect the user lands back here; as soon as the
+  // session is hydrated, send them into the app instead of leaving them on the
+  // marketing page (which looked like a blank/no-op sign-in).
+  useEffect(() => {
+    let done = false;
+    const go = () => {
+      if (done) return;
+      done = true;
+      navigate({ to: "/app", replace: true });
+    };
+    supabase.auth.getSession().then(({ data }) => { if (data.session) go(); });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => { if (s) go(); });
+    return () => subscription.unsubscribe();
+  }, [navigate]);
+
   return (
     <div className="min-h-[100dvh] bg-background text-foreground relative overflow-hidden">
       <div className="pointer-events-none absolute -top-40 -left-40 size-[500px] rounded-full opacity-20" style={{ background: "radial-gradient(circle, var(--tobi-glow), transparent 60%)" }} />

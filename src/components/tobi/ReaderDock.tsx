@@ -205,7 +205,8 @@ function useTTS() {
 function chunkText(s: string, max = 1200): string[] {
   const clean = s.replace(/\s+/g, " ").trim();
   if (clean.length <= max) return [clean];
-  const sents = clean.split(/(?<=[.!?])\s+/);
+  // Avoid lookbehind regex — older iOS/Safari throws "invalid group specifier name".
+  const sents = clean.match(/[^.!?]+[.!?]*\s*/g) ?? [clean];
   const out: string[] = [];
   let buf = "";
   for (const x of sents) {
