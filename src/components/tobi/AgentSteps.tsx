@@ -16,7 +16,7 @@ export function AgentSteps({ steps }: { steps: AgentStep[] }) {
             )}
           </span>
           <span className={s.state === "failed" ? "line-through" : undefined}>{s.label}</span>
-          {s.detail && <span className="truncate opacity-60">— {s.detail}</span>}
+          {s.detail && <span className="truncate opacity-60">- {s.detail}</span>}
         </div>
       ))}
     </div>

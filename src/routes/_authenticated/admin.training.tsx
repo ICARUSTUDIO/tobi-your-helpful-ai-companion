@@ -171,7 +171,7 @@ function AdminTrainingPage() {
                         onChange={(e) => setDrafts((d) => ({ ...d, [row.id]: e.target.value }))}
                         rows={2}
                         className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-sky-500 text-slate-100"
-                        placeholder="No summary generated — write one or reject."
+                        placeholder="No summary generated - write one or reject."
                       />
                     </div>
                     <details className="text-xs group">

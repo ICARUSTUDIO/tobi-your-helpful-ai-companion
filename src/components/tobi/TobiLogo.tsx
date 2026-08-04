@@ -4,7 +4,7 @@ type TobiLogoProps = {
 };
 
 /**
- * Tobi mark — a speech bubble that holds a lowercase "t" (Tobi)
+ * Tobi mark - a speech bubble that holds a lowercase "t" (Tobi)
  * with a small orbiting node = memory. Chat + memory in one glyph.
  */
 export function TobiLogo({ className = "", markClassName = "" }: TobiLogoProps) {
@@ -27,7 +27,7 @@ export function TobiLogo({ className = "", markClassName = "" }: TobiLogoProps) 
           strokeLinecap="round"
           strokeLinejoin="round"
         />
-        {/* memory node — small orbit + dot */}
+        {/* memory node - small orbit + dot */}
         <circle cx="23" cy="11" r="2.6" stroke="currentColor" strokeWidth="1" opacity="0.5" />
         <circle cx="23" cy="11" r="1.2" fill="currentColor" />
       </svg>

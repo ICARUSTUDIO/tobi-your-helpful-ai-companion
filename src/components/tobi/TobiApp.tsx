@@ -41,7 +41,7 @@ const SUGGESTION_POOL: string[] = [
   "Debug: TypeError: Cannot read properties of undefined",
   "Why is my useEffect running twice?",
   "Help me read this stack trace",
-  "My Docker container exits immediately — why?",
+  "My Docker container exits immediately - why?",
   // Research
   "Compare Postgres vs MongoDB for a social app",
   "Summarize the latest on AI regulation",
@@ -57,7 +57,7 @@ const SUGGESTION_POOL: string[] = [
   // Reddit / threads
   "Check Reddit for the best mechanical keyboard under $100",
   "What does r/personalfinance say about index funds?",
-  "Best budget noise-cancelling headphones — Reddit consensus",
+  "Best budget noise-cancelling headphones - Reddit consensus",
   // Life / fun
   "Give me a 20-minute home workout",
   "Suggest a weekend project I can finish in a day",
@@ -305,7 +305,7 @@ export function TobiApp() {
       } else {
         data = await res.json();
       }
-      if (!data) throw new Error("The connection dropped mid-thought — try again?");
+      if (!data) throw new Error("The connection dropped mid-thought - try again?");
       if (Array.isArray(data?.logs)) {
         setDevLogs((prev) => [...prev, { t: Date.now(), level: "info", tag: "client", msg: `── request "${userMsg.content.slice(0, 60)}" ──` }, ...data.logs]);
       }
@@ -480,7 +480,7 @@ export function TobiApp() {
     setProfile(updated);
   }
 
-  // Birthday check — compares MM-DD to today
+  // Birthday check - compares MM-DD to today
   const isBirthday = (() => {
     if (!profile?.birthday) return false;
     const today = new Date();
@@ -547,7 +547,7 @@ export function TobiApp() {
                       : "Hey, I'm Tobi."}
                 </p>
                 {isBirthday && (
-                  <p className="mt-2 text-tobi text-sm font-medium">Wishing you the best one yet — go enjoy your day, I got the work covered. 🎂</p>
+                  <p className="mt-2 text-tobi text-sm font-medium">Wishing you the best one yet - go enjoy your day, I got the work covered. 🎂</p>
                 )}
                 <p className="mt-2 text-muted-foreground text-sm max-w-md mx-auto">
                   I write code, hunt bugs, dive deep into research, find places on a map, pull threads from anywhere, and read your Word / Excel docs.

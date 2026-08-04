@@ -205,7 +205,7 @@ function useTTS() {
 function chunkText(s: string, max = 1200): string[] {
   const clean = s.replace(/\s+/g, " ").trim();
   if (clean.length <= max) return [clean];
-  // Avoid lookbehind regex — older iOS/Safari throws "invalid group specifier name".
+  // Avoid lookbehind regex - older iOS/Safari throws "invalid group specifier name".
   const sents = clean.match(/[^.!?]+[.!?]*\s*/g) ?? [clean];
   const out: string[] = [];
   let buf = "";
@@ -286,7 +286,7 @@ export function ReaderDock({ post, summary, onClose }: Props) {
     const hit = post.comments.findIndex((c) => c.body.toLowerCase().includes(needle));
     if (hit === -1) {
       addNote(
-        `I searched all ${totalComments} loaded comments for "${q}" — no match. Want me to load more from Reddit?`,
+        `I searched all ${totalComments} loaded comments for "${q}" - no match. Want me to load more from Reddit?`,
       );
     } else {
       setShown(Math.max(shown, hit + 1));
@@ -414,7 +414,7 @@ export function ReaderDock({ post, summary, onClose }: Props) {
               <div className="font-display text-lg font-semibold">Meet the Listen button</div>
             </div>
             <p className="mt-4 text-sm text-foreground/85 leading-relaxed">
-              Hit <b>Listen</b> and I'll read you <b>my take</b> on this thread — not the raw post,
+              Hit <b>Listen</b> and I'll read you <b>my take</b> on this thread - not the raw post,
               just the summary I wrote. When I'm done, I'll offer to read the top comments too. You
               can minimize this panel and keep chatting; I'll ping you from the top-right when I
               need an answer.
@@ -460,7 +460,7 @@ export function ReaderDock({ post, summary, onClose }: Props) {
               title="Minimize"
               className="rounded-full size-7 grid place-items-center text-muted-foreground hover:bg-muted hover:text-foreground"
             >
-              –
+              -
             </button>
             <button
               onClick={() => {

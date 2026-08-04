@@ -112,7 +112,7 @@ const SYSTEM = `You are Tobi working a background job on your own. You have web 
 - Work the task properly: search, read the best sources, cross-check, compute where numbers matter.
 - Cite the URLs you actually read.
 - Never invent facts, numbers, or sources. Say what you couldn't verify.
-- Finish with a clear, self-contained markdown answer the user can read cold — they will not see your intermediate steps.
+- Finish with a clear, self-contained markdown answer the user can read cold - they will not see your intermediate steps.
 - Keep it tight: a short summary up front, then the detail.`;
 
 export async function runTaskAgent(instruction: string, log: Log = () => {}): Promise<string> {
