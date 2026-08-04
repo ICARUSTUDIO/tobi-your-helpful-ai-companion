@@ -13,7 +13,7 @@ export const Route = createFileRoute("/login")({
   head: () => ({
     meta: [
       { title: "Sign in to Tobi AI" },
-      { name: "description", content: "Sign in or create your Tobi AI account to chat with your personal AI bro - code, research, maps, and memory in one place." },
+      { name: "description", content: "Sign in or create your Tobi AI account to chat with your personal AI bro for code, research, maps, and memory in one place." },
       { property: "og:title", content: "Sign in to Tobi AI" },
       { property: "og:description", content: "Sign in or create your Tobi AI account to start chatting with your personal AI bro." },
       { property: "og:url", content: "https://t-obi.xyz/login" },

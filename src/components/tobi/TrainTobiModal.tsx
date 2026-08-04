@@ -33,7 +33,7 @@ export function TrainTobiModal({ onYes, onNo }: Props) {
         </div>
         <p className="text-sm text-muted-foreground leading-relaxed">
           {done
-            ? "Thanks 🙏 - sent to Tobi's creator for review."
+            ? "Thanks 🙏, sent to Tobi's creator for review."
             : "If you say yes, this chat goes to Tobi's creator who reviews it and turns the useful bits into something Tobi can learn from. Your name and personal details are stripped out."}
         </p>
         {!done && (

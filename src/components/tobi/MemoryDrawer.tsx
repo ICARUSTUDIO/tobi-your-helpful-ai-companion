@@ -46,7 +46,7 @@ export function MemoryDrawer({ open, onClose, name, onChange }: Props) {
             <div>
               <div className="font-display text-base font-semibold tracking-tight">What Tobi knows</div>
               <div className="text-[11px] text-muted-foreground mt-0.5">
-                {name ? `about ${name}` : "about you"} - tap × to forget anything.
+                {name ? `about ${name}` : "about you"}, tap × to forget anything.
               </div>
             </div>
             <button onClick={onClose} className="size-7 grid place-items-center rounded-full hover:bg-muted text-muted-foreground">×</button>
@@ -57,7 +57,7 @@ export function MemoryDrawer({ open, onClose, name, onChange }: Props) {
             <div className="text-xs text-muted-foreground px-2 py-4">Loading memory…</div>
           ) : items.length === 0 ? (
             <div className="text-xs text-muted-foreground px-2 py-6 text-center">
-              Tobi hasn't picked up any facts yet. Tell him about yourself - where you live, what you do, what you love - and they'll show up here.
+              Tobi hasn't picked up any facts yet. Tell him about yourself (where you live, what you do, what you love) and they'll show up here.
             </div>
           ) : (
             items.map((f) => (

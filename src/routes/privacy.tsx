@@ -4,9 +4,9 @@ export const Route = createFileRoute("/privacy")({
   component: PrivacyPage,
   head: () => ({
     meta: [
-      { title: "Privacy Policy - Tobi AI" },
+      { title: "Privacy Policy | Tobi AI" },
       { name: "description", content: "How Tobi AI collects, uses, and protects your account data, conversations, and memory facts. Read the full privacy policy." },
-      { property: "og:title", content: "Privacy Policy - Tobi AI" },
+      { property: "og:title", content: "Privacy Policy | Tobi AI" },
       { property: "og:description", content: "How Tobi AI handles your account, chats, and memory data." },
       { property: "og:url", content: "https://t-obi.xyz/privacy" },
     ],
@@ -52,7 +52,7 @@ function PrivacyPage() {
 
           <section>
             <h2 className="font-display text-xl font-semibold mb-3 text-foreground">3. AI Learning &amp; User Consent</h2>
-            <p>Tobi may ask if it can learn from your conversation to improve future responses. This is entirely optional - you can accept or decline on a per-conversation basis. We implement rate limits on how often Tobi asks for consent to respect your privacy. You may also opt out entirely via your account settings.</p>
+            <p>Tobi may ask if it can learn from your conversation to improve future responses. This is entirely optional, so you can accept or decline on a per-conversation basis. We implement rate limits on how often Tobi asks for consent to respect your privacy. You may also opt out entirely via your account settings.</p>
           </section>
 
           <section>
