@@ -58,7 +58,7 @@ export function TasksDrawer({ open, onClose, refreshKey }: { open: boolean; onCl
                   <div className="text-[11px] text-muted-foreground mt-0.5">
                     {t.status === "running" && "⏳ Working on it…"}
                     {t.status === "queued" && "• Queued"}
-                    {t.status === "done" && "✅ Done - tap to read"}
+                    {t.status === "done" && "✅ Done, tap to read"}
                     {t.status === "failed" && `⚠️ ${t.error ?? "Failed"}`}
                   </div>
                 </button>

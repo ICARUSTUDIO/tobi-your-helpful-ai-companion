@@ -286,7 +286,7 @@ export function ReaderDock({ post, summary, onClose }: Props) {
     const hit = post.comments.findIndex((c) => c.body.toLowerCase().includes(needle));
     if (hit === -1) {
       addNote(
-        `I searched all ${totalComments} loaded comments for "${q}" - no match. Want me to load more from Reddit?`,
+        `I searched all ${totalComments} loaded comments for "${q}", no match. Want me to load more from Reddit?`,
       );
     } else {
       setShown(Math.max(shown, hit + 1));
@@ -414,7 +414,7 @@ export function ReaderDock({ post, summary, onClose }: Props) {
               <div className="font-display text-lg font-semibold">Meet the Listen button</div>
             </div>
             <p className="mt-4 text-sm text-foreground/85 leading-relaxed">
-              Hit <b>Listen</b> and I'll read you <b>my take</b> on this thread - not the raw post,
+              Hit <b>Listen</b> and I'll read you <b>my take</b> on this thread, not the raw post,
               just the summary I wrote. When I'm done, I'll offer to read the top comments too. You
               can minimize this panel and keep chatting; I'll ping you from the top-right when I
               need an answer.
