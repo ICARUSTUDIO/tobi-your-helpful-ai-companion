@@ -7,9 +7,9 @@ export const Route = createFileRoute("/")({
   component: LandingPage,
   head: () => ({
     meta: [
-      { title: "Tobi AI — your interactive AI bro" },
+      { title: "Tobi AI - your interactive AI bro" },
       { name: "description", content: "Tobi AI is a personalized AI assistant that codes, debugs, researches, finds places on a map, and remembers what matters." },
-      { property: "og:title", content: "Tobi AI — your interactive AI bro" },
+      { property: "og:title", content: "Tobi AI - your interactive AI bro" },
       { property: "og:description", content: "Tobi AI codes, debugs, researches, finds places on a map, and remembers what matters." },
       { property: "og:url", content: "https://t-obi.xyz/" },
     ],
@@ -91,7 +91,7 @@ function LandingPage() {
         </h1>
         <p className="mt-5 text-base sm:text-lg text-muted-foreground max-w-2xl mx-auto">
           Tobi AI is a personalized, interactive assistant that writes code, debugs, runs deep research,
-          finds places on an interactive map, reads documents with you, and remembers the things that matter —
+          finds places on an interactive map, reads documents with you, and remembers the things that matter -
           so every conversation picks up where the last one left off.
         </p>
         <div className="mt-8 flex items-center justify-center gap-3">
@@ -102,9 +102,9 @@ function LandingPage() {
         <section id="features" className="mt-24 grid sm:grid-cols-2 gap-4 text-left">
           {[
             { t: "Codes & debugs", d: "Writes, explains, and fixes code across stacks. Paste a stack trace, get a real answer." },
-            { t: "Deep research", d: "Goes beyond a single search — synthesizes sources into something you can actually use." },
+            { t: "Deep research", d: "Goes beyond a single search - synthesizes sources into something you can actually use." },
             { t: "Interactive map", d: "Find places, plan trips, and explore neighborhoods on a live map inside the chat." },
-            { t: "Remembers you", d: "Learns your name, your projects, your preferences — only with your consent." },
+            { t: "Remembers you", d: "Learns your name, your projects, your preferences - only with your consent." },
           ].map((f) => (
             <div key={f.t} className="rounded-2xl border border-border bg-card/60 backdrop-blur p-5">
               <div className="font-display text-base font-semibold">{f.t}</div>
@@ -118,7 +118,7 @@ function LandingPage() {
           <p className="mt-3 text-sm text-muted-foreground leading-relaxed">
             Tobi AI is a personal AI assistant built for people who want a more human, less corporate
             chatbot. Sign in with email or Google to start a conversation, train Tobi on the facts that
-            matter to you, and come back any time — your history and memories stay with you. Built and
+            matter to you, and come back any time - your history and memories stay with you. Built and
             maintained by Toby (contact: <a href="mailto:tobyfemi@proton.me" className="underline">tobyfemi@proton.me</a>).
           </p>
         </section>

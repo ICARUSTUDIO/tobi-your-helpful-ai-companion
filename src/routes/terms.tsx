@@ -4,9 +4,9 @@ export const Route = createFileRoute("/terms")({
   component: TermsPage,
   head: () => ({
     meta: [
-      { title: "Terms of Service — Tobi AI" },
-      { name: "description", content: "The terms that govern your use of Tobi AI — accounts, acceptable use, AI-generated content, and account termination." },
-      { property: "og:title", content: "Terms of Service — Tobi AI" },
+      { title: "Terms of Service - Tobi AI" },
+      { name: "description", content: "The terms that govern your use of Tobi AI - accounts, acceptable use, AI-generated content, and account termination." },
+      { property: "og:title", content: "Terms of Service - Tobi AI" },
       { property: "og:description", content: "The terms that govern your use of Tobi AI." },
       { property: "og:url", content: "https://t-obi.xyz/terms" },
     ],
