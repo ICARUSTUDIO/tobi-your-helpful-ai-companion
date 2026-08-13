@@ -1,7 +1,6 @@
 import { createFileRoute, redirect, useNavigate, Link } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { lovable } from "@/integrations/lovable";
 import { TobiLogo } from "@/components/tobi/TobiLogo";
 
 export const Route = createFileRoute("/login")({
@@ -40,8 +39,11 @@ function LoginPage() {
 
   async function withGoogle() {
     setErr(null);
-    const r = await lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin });
-    if (r.error) setErr(r.error.message || "Google sign-in failed");
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: `${window.location.origin}/` },
+    });
+    if (error) setErr(error.message || "Google sign-in failed");
   }
 
   async function submit(e: React.FormEvent) {
@@ -58,8 +60,8 @@ function LoginPage() {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
       }
-    } catch (e: any) {
-      setErr(e?.message || "Something went wrong");
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Something went wrong");
     } finally {
       setBusy(false);
     }
