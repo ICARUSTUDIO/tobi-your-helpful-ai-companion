@@ -21,9 +21,6 @@ dist-ssr
 .env.*
 !.env.example
 
-# Local tooling metadata
-.lovable/
-
 # Wrangler / Cloudflare
 .wrangler/
 .dev.vars
