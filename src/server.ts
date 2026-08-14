@@ -7,6 +7,34 @@ type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
 };
 
+type RuntimeBindings = Record<string, unknown>;
+
+const EXISTING_AI_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
+
+function getStringBinding(bindings: RuntimeBindings, name: string): string | undefined {
+  const value = bindings[name];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function preserveAiRuntimeConfiguration(env: unknown): void {
+  if (typeof process === "undefined" || !process.env) return;
+
+  const bindings: RuntimeBindings = env && typeof env === "object" ? (env as RuntimeBindings) : {};
+
+  const configuredKey = process.env.AI_API_KEY ?? getStringBinding(bindings, "AI_API_KEY");
+  const existingKey = process.env.LOVABLE_API_KEY ?? getStringBinding(bindings, "LOVABLE_API_KEY");
+
+  if (!process.env.AI_API_KEY) {
+    const key = configuredKey ?? existingKey;
+    if (key) process.env.AI_API_KEY = key;
+  }
+
+  if (!process.env.AI_GATEWAY_URL) {
+    process.env.AI_GATEWAY_URL =
+      getStringBinding(bindings, "AI_GATEWAY_URL") ?? EXISTING_AI_GATEWAY_URL;
+  }
+}
+
 let serverEntryPromise: Promise<ServerEntry> | undefined;
 
 async function getServerEntry(): Promise<ServerEntry> {
@@ -69,6 +97,7 @@ async function normalizeCatastrophicSsrResponse(response: Response): Promise<Res
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
+      preserveAiRuntimeConfiguration(env);
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
       return await normalizeCatastrophicSsrResponse(response);
